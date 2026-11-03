@@ -1,0 +1,74 @@
+=======================================
+  BLOOM — DEVELOPMENT NOTES
+  Phase 1 — November 2, 2026
+=======================================
+
+THE IDEA (Todd)
+---------------
+A calm space adventure inspired by Life Bubble. An astronaut is stranded on
+a dead little planet. A glowing bubble keeps them alive; growing the bubble
+brings the planet back to life (cracked red earth turns to grass, the lava
+river runs blue, bare trees turn green). Go places, gather, collect, earn
+better tools, and get better at things over time. No enemies, no losing.
+
+Todd's long-term design
+- Planets after the first come from a random generator (same screen,
+  structures and obstacles chosen at random) instead of hand-made layouts.
+- Each planet uses 3-6 materials from a long master list that grows.
+- One or two materials upgrade a machine or rebuild a broken pre-placed
+  item (like the bridge). Find and collect enough to restore the planet.
+- Bubble generators upgrade a few times; sometimes a bubble must be maxed
+  out to connect to the next area. Maxed equipment shows MAX instead of costs.
+- Oxygen: an air timer runs outside the bubbles (rescue astronauts, mine
+  just outside, cross dead ground as a shortcut). Suit upgrades add time.
+- Easter eggs (later): an obscure spot that, mined or cleared enough,
+  reveals a small cave / room / old building / old ship with special
+  non-critical materials that make the planet faster or cheaper to finish.
+- Carry-over item (later): one special item taken to the next world and
+  combined there with a few local resources makes a tool 3-5 levels better.
+- Level up: skills grow with use; tool upgrades; collection album with set
+  rewards (later); rescued astronauts as helpers; upgrade machines in play.
+
+PHASE 1 (built)
+---------------
+Engine and look
+- three.js, smooth rounded toy-like shapes, bright colours, close angled
+  camera, press-and-pull joystick (and arrow keys / WASD on a laptop).
+- The planet is a floating disc (radius 62) over a starfield.
+- Ground shader: cracked red earth (Voronoi cracks) outside bubbles, grass
+  inside, a cyan glow at every bubble edge. Up to 12 bubbles.
+- River ribbon: lava outside a bubble, flowing water inside.
+- Grass tufts and flowers grow only inside bubbles; pebbles only outside.
+  Trees switch between bare/dead and green as the bubble reaches them.
+- Bubble domes: soft cyan fresnel shells that grow smoothly.
+- Auto quality: lower resolution, then no shadows, if the phone struggles.
+
+Planet 1 "Ember" (src/planet.js is a description; a generator will
+produce the same shape later)
+- Materials: wood (trees), stone (boulders), red crystal, gold (ore; needs
+  the crystal pickaxe).
+- 7 bubble generators (home is built; 6 build sites with signposts),
+  each with 2-4 levels and per-level costs, MAX badge when done.
+- Broken bridge across the river (repair to reach the north).
+- 2 extractors (red crystal, gold): build, then they mine on their own into
+  storage; walk past to collect; upgrade for speed/storage.
+- Workbench (inside the starting bubble): pickaxe, axe, backpack, suit.
+- 4 lost astronauts in HELP bubbles; walk up and lead them into any bubble.
+  Each rescue: +5 bag space; they wait by the workbench and wave.
+- Air: 12s outside at first (20/30/45 with suit upgrades). At zero, the
+  suit floats you gently back into the nearest bubble; nothing is lost.
+- Skills: mining and woodcutting levels rise with use (5% faster swings per
+  level, and a growing chance of a bonus piece).
+- Goal: 50% of the planet alive, then repair the rocket -> lift off.
+  (All generators maxed gives about 57%.)
+- Autosave every 5s and when the app is hidden; Continue / Start over.
+
+Playtest (automated): gathering, generator upgrade, building outside with
+air, float home, bridge repair, rescue, workbench upgrade, extractor, rocket
+and lift-off all worked; no errors.
+
+NEXT (ideas)
+------------
+- Todd's notes from playing on the phone.
+- Collection album + set rewards; helpers that gather; easter egg spot.
+- Planet generator and planet 2 with new materials; carry-over item.

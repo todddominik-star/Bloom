@@ -1,0 +1,19 @@
+# Dependencies (reinstalled with npm install)
+node_modules/
+
+# Claude's playtest output and scratch scripts
+shots/
+test*.py
+dbg.py
+
+# Packaging leftovers
+pkg/
+*.zip
+dist/artifact.html
+
+# OS and editor clutter
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+__pycache__/
