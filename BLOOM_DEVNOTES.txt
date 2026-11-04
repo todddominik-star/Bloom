@@ -72,3 +72,6 @@ NEXT (ideas)
 - Todd's notes from playing on the phone.
 - Collection album + set rewards; helpers that gather; easter egg spot.
 - Planet generator and planet 2 with new materials; carry-over item.
+
+wow. what fun! so much is good on the first pass: colors, movement speed, objects like rocks, trees, crystals, gold... level up mechanism, resource transfer to a machine or workbench. the ore generators worked good, and the river and bridge worked out well. all upgrades were good.
+here is what we need to handle with phase 2:
