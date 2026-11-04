@@ -125,3 +125,20 @@ Refining (new)
 Playtest (automated): touch gathering, extractor bag limit, kiln repair /
 load / collect, both bridges, 100% coverage, gold badge, launch button.
 
+WORKBENCH LAYOUT — to discuss (Todd, Nov 3)
+-------------------------------------------
+Problem: the workbench panel covers the bottom of the screen, so touching to
+walk away lands on the panel instead. Todd walks with his right hand, on the
+right side or centre of the screen.
+Options Claude proposed (nothing built yet):
+ A. Todd's idea: a slim column of tool icons on the left edge (axe, pick,
+    backpack, suit). Tapping one opens its cost card beside the column;
+    the right two-thirds of the screen stays free, and touching there walks
+    away as normal.
+ B. Same left column, but the costs show as a small badge on each icon
+    (green dot = you can afford it, MAX when done); tap an icon to upgrade.
+    No second card at all.
+ C. No panel: four little signposts around the workbench, one per tool,
+    each working like every other sign (stand on it to pay). Walking past
+    a signpost you don't want simply does nothing.
+
