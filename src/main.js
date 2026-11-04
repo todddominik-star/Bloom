@@ -3,20 +3,20 @@ import { MATERIALS, icon } from './materials.js';
 import { PLANET1, NODE_MATERIAL } from './planet.js';
 
 const P = PLANET1;
-const SAVE_KEY = 'bloom-save-v1';
+const SAVE_KEY = 'bloom-save-v2'; // the bigger planet: older saves start fresh
 
 // ------------------------------------------------------------------ tuning
 const WALK = 6.2;            // walking speed (units / s)
 const FLOAT_HOME = 10;       // speed when the suit floats you home
-const REACH = 1.9;           // how close you need to be to gather
+const REACH = 0.75;          // walk right up and touch it to gather (you stop about 0.45 from it)
 const SITE_REACH = 2.8;      // how close you need to be to pay into a sign
 const BASE_SWING = 0.62;     // seconds between tool swings at level 1
 const REGROW = 45;           // seconds for a used-up node to grow back
 const TOOL_SPEED = [1, 1.5, 2.1];
-const BAG_SIZES = [30, 45, 60, 80];
+const BAG_SIZES = [30, 40, 55, 70];
 const AIR_TIMES = [12, 20, 30, 45];
 const UPGRADES = {
-  pick:  { name: 'Pickaxe',  note: ['Stone pick', 'Crystal pick: mines gold', 'Golden pick: swings fast'], costs: [{ stone: 12, redCrystal: 8 }, { redCrystal: 16, gold: 8 }] },
+  pick:  { name: 'Pickaxe',  note: ['Stone pick', 'Crystal pick: mines gold', 'Golden pick: swings fast'], costs: [{ stone: 12, redCrystal: 8 }, { goldBar: 3, redCrystal: 12 }] },
   axe:   { name: 'Axe',      note: ['Stone axe', 'Crystal axe', 'Golden axe'], costs: [{ wood: 12, stone: 8 }, { stone: 14, redCrystal: 10 }] },
   bag:   { name: 'Backpack', note: BAG_SIZES.map((s) => `Holds ${s}`), costs: [{ wood: 14, stone: 10 }, { redCrystal: 16, stone: 12 }, { gold: 10, redCrystal: 14 }] },
   suit:  { name: 'Space suit', note: AIR_TIMES.map((s) => `${s}s of air outside`), costs: [{ wood: 10, stone: 10 }, { redCrystal: 12, stone: 10 }, { gold: 8, redCrystal: 12 }] },
@@ -26,7 +26,7 @@ const UPGRADES = {
 const bag = {};
 const tools = { pick: 0, axe: 0, bag: 0, suit: 0 };
 const skills = { mine: 0, chop: 0 };
-let rescued = 0, restore = 0, hudDirty = true;
+let rescued = 0, restore = 0, hudDirty = true, incoming = 0, badge = false;
 
 // ------------------------------------------------------------------ helpers
 function rng(seed) { let s = seed * 9301 + 49297; return () => ((s = (s * 16807) % 2147483647) / 2147483647); }
@@ -61,7 +61,7 @@ scene.add(sun, sun.target);
 const SUN_DIR = new THREE.Vector3(-0.45, 1, 0.35).normalize();
 
 // ------------------------------------------------------------------ bubbles (the living zones)
-const MAX_B = 12;
+const MAX_B = 24;
 const bubbleU = { value: Array.from({ length: MAX_B }, () => new THREE.Vector3(0, 0, 0)) };
 const bubbleN = { value: 0 };
 const timeU = { value: 0 };
@@ -439,7 +439,8 @@ const nodes = [];
           !gens.some((g) => Math.hypot(g.x - x, g.z - z) < 3.5) &&
           Math.hypot(P.rocket.x - x, P.rocket.z - z) > 4.5 && Math.hypot(P.workbench.x - x, P.workbench.z - z) > 3.5 &&
           Math.hypot(P.start.x - x, P.start.z - z) > 2.5 &&
-          !P.extractors.some((e) => Math.hypot(e.x - x, e.z - z) < 4) && Math.hypot(P.bridge.at[0] - x, P.bridge.at[1] - z) > 6;
+          !P.extractors.some((e) => Math.hypot(e.x - x, e.z - z) < 4) && !P.bridges.some((b) => Math.hypot(b.at[0] - x, b.at[1] - z) < 7) &&
+          !P.refiners.some((m) => Math.hypot(m.x - x, m.z - z) < 4.5);
       }
       if (!ok) continue;
       const type = zone.node;
@@ -462,7 +463,7 @@ const nodes = [];
 }
 
 // ---- decoration: grass and flowers that only grow inside bubbles, pebbles and twigs outside
-const DECO = 900;
+const DECO = 2000;
 const decoPts = [];
 {
   const r = rng(42);
@@ -521,9 +522,9 @@ function renderSite(site) {
   let html = `<b>${site.title()}</b>`;
   const lock = site.locked && site.locked();
   if (lock) html += `<span class="lock">${lock}</span>`;
-  else if (!c) html += `<span class="max">MAX</span>`;
+  else if (!c) html += `<span class="max">${site.doneText || 'MAX'}</span>`;
   else {
-    html += '<span class="row">';
+    html += `<span class="row">${site.rowLabel && site.rowLabel() ? `<span class="lbl">${site.rowLabel()}</span>` : ''}`;
     for (const [m, n] of Object.entries(c)) if (n > 0) html += `<span class="cost${(bag[m] || 0) > 0 ? ' have' : ''}">${icon(m, 18)}${n}</span>`;
     html += '</span>';
   }
@@ -600,25 +601,113 @@ function refreshEx(ex) {
   ex.model.visible = built; ex.deposit.visible = !built; ex.sign.visible = !built;
 }
 
-// --- bridge
-const bridge = { repaired: false, paid: {} };
-{
-  const [bx, bz] = P.bridge.at;
+// --- bridges
+const bridges = P.bridges.map((def, i) => {
+  const [bx, bz] = def.at;
   const info = riverInfo(bx, bz);
-  bridge.tx = info.tx; bridge.tz = info.tz;
-  bridge.broken = makeBridge(false, info.tx, info.tz); bridge.broken.position.set(bx, 0, bz); scene.add(bridge.broken);
-  bridge.whole = makeBridge(true, info.tx, info.tz); bridge.whole.position.set(bx, 0, bz); bridge.whole.visible = false; scene.add(bridge.whole);
-  bridge.sign = makeSign(); bridge.sign.position.set(bx - info.tz * 5 + info.tx * 2, 0, bz + info.tx * 5 + info.tz * 2); scene.add(bridge.sign);
-  bridge.site = addSite({
-    x: bx - info.tz * 4.2, z: bz + info.tx * 4.2, reach: 3.2,
+  const br = { def, i, repaired: false, paid: {}, tx: info.tx, tz: info.tz };
+  br.broken = makeBridge(false, info.tx, info.tz); br.broken.position.set(bx, 0, bz); scene.add(br.broken);
+  br.whole = makeBridge(true, info.tx, info.tz); br.whole.position.set(bx, 0, bz); br.whole.visible = false; scene.add(br.whole);
+  br.sign = makeSign(); br.sign.position.set(bx - info.tz * 6 + info.tx * 2, 0, bz + info.tx * 6 + info.tz * 2); scene.add(br.sign);
+  br.site = addSite({
+    x: bx - info.tz * 5.2, z: bz + info.tx * 5.2, reach: 3.2,
     title: () => 'Broken bridge',
-    cost: () => { if (bridge.repaired) return null; const left = {}; for (const [m, n] of Object.entries(P.bridge.cost)) left[m] = n - (bridge.paid[m] || 0); return left; },
-    pay: (m) => { bridge.paid[m] = (bridge.paid[m] || 0) + 1; },
-    complete: () => { bridge.repaired = true; sfx.build(); toast('Bridge repaired! The north is open.', true); refreshBridge(); },
+    cost: () => { if (br.repaired) return null; const left = {}; for (const [m, n] of Object.entries(def.cost)) left[m] = n - (br.paid[m] || 0); return left; },
+    pay: (m) => { br.paid[m] = (br.paid[m] || 0) + 1; },
+    complete: () => { br.repaired = true; sfx.build(); toast('Bridge repaired! You can cross the river here.', true); refreshBridge(br); },
     hideWhenDone: true,
   });
+  return br;
+});
+function refreshBridge(br) { br.broken.visible = !br.repaired; br.whole.visible = br.repaired; br.sign.visible = !br.repaired; }
+
+// --- refining machines: repair them, load two raw materials, wait, collect the refined item
+const refiners = P.refiners.map((def) => ({ ...def, repaired: false, paid: {}, loaded: {}, out: 0, t: 0 }));
+function makeRefiner(def) {
+  const grp = new THREE.Group();
+  const base = mesh(new THREE.CylinderGeometry(1.6, 1.8, 0.5, 18), '#dfe4ee'); base.position.y = 0.25;
+  const body = mesh(new THREE.CylinderGeometry(1.0, 1.25, 1.8, 16), def.id === 'smelter' ? '#8a8f9a' : def.id === 'kiln' ? '#c97b5a' : '#e8ecf3'); body.position.y = 1.4;
+  const cap = mesh(new THREE.ConeGeometry(1.1, 0.8, 16), '#3d8bff'); cap.position.y = 2.7;
+  const chute = mesh(new THREE.BoxGeometry(0.7, 0.5, 0.9), '#9aa1ad'); chute.position.set(0, 0.9, 1.25);
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.32, 14, 10), new THREE.MeshBasicMaterial({ color: '#5ff2ff' }));
+  glow.position.set(0, 1.6, 1.12);
+  const out = mesh(new THREE.OctahedronGeometry(0.3, 0), MATERIALS[def.output].color, { flatShading: true, emissive: MATERIALS[def.output].color, emissiveIntensity: 0.3 });
+  out.position.set(0, 3.4, 0);
+  grp.add(base, body, cap, chute, glow, out);
+  // broken look: bits lying around
+  const junk = new THREE.Group();
+  for (let i = 0; i < 4; i++) { const j = mesh(new THREE.BoxGeometry(0.5, 0.3, 0.4), '#9aa1ad'); j.position.set(Math.cos(i * 1.7) * 2, 0.15, Math.sin(i * 1.7) * 2); j.rotation.y = i; junk.add(j); }
+  grp.add(junk);
+  grp.userData = { glow, out, cap, body, junk };
+  return grp;
 }
-function refreshBridge() { bridge.broken.visible = !bridge.repaired; bridge.whole.visible = bridge.repaired; bridge.sign.visible = !bridge.repaired; }
+for (const rf of refiners) {
+  rf.model = makeRefiner(rf); rf.model.position.set(rf.x, 0, rf.z); scene.add(rf.model);
+  colliders.push({ x: rf.x, z: rf.z, r: 1.4 });
+  rf.site = addSite({
+    x: rf.x, z: rf.z + 0.6, reach: 3.4,
+    title: () => (rf.repaired ? rf.name : `Broken ${rf.name.toLowerCase()}`),
+    cost: () => {
+      if (!rf.repaired) { const left = {}; for (const [m, n] of Object.entries(rf.repair)) left[m] = n - (rf.paid[m] || 0); return left; }
+      // once repaired, the "cost" is whatever its hopper still has room for
+      const left = {}; let any = false;
+      for (const [m, n] of Object.entries(rf.inputs)) { left[m] = n * rf.hold - (rf.loaded[m] || 0); if (left[m] > 0) any = true; }
+      return any ? left : {};
+    },
+    pay: (m) => { if (!rf.repaired) rf.paid[m] = (rf.paid[m] || 0) + 1; else rf.loaded[m] = (rf.loaded[m] || 0) + 1; },
+    complete: () => {
+      if (rf.repaired) return; // a full hopper isn't an event
+      rf.repaired = true; rf.paid = {}; sfx.build();
+      toast(`${rf.name} repaired! Load it, then collect ${MATERIALS[rf.output].name.toLowerCase()}.`, true);
+      refreshRefiner(rf);
+    },
+    extra: () => {
+      if (!rf.repaired) return `<span class="recipe">${recipeHtml(rf)}</span>`;
+      const pct = Math.round((rf.t / rf.secs) * 100);
+      return `<span class="recipe">${recipeHtml(rf)}</span><span class="store">${icon(rf.output, 16)} ${rf.out}/${rf.store}${canRun(rf) ? ` · ${pct}%` : ''}</span>`;
+    },
+    rowLabel: () => (rf.repaired ? 'Load' : ''),
+  });
+  refreshRefiner(rf);
+}
+function recipeHtml(rf) {
+  return Object.entries(rf.inputs).map(([m, n]) => `${n}${icon(m, 14)}`).join(' + ') + ` → ${icon(rf.output, 16)}`;
+}
+function canRun(rf) { return rf.repaired && rf.out < rf.store && Object.entries(rf.inputs).every(([m, n]) => (rf.loaded[m] || 0) >= n); }
+function refreshRefiner(rf) {
+  const u = rf.model.userData;
+  u.junk.visible = !rf.repaired;
+  u.cap.visible = rf.repaired;
+  u.body.rotation.z = rf.repaired ? 0 : 0.25;
+  u.glow.material.color.set(rf.repaired ? '#5ff2ff' : '#6b7280');
+}
+function updateRefiners(dt, t) {
+  for (const rf of refiners) {
+    const u = rf.model.userData;
+    u.out.visible = rf.repaired;
+    if (!rf.repaired) continue;
+    const running = canRun(rf);
+    u.out.rotation.y += dt * (running ? 3 : 0.6);
+    u.out.position.y = 3.4 + Math.sin(t * 2) * 0.12;
+    u.glow.scale.setScalar(running ? 1 + Math.sin(t * 10) * 0.15 : 0.8);
+    if (running) {
+      rf.t += dt;
+      if (rf.t >= rf.secs) {
+        rf.t = 0;
+        for (const [m, n] of Object.entries(rf.inputs)) rf.loaded[m] -= n;
+        rf.out++;
+        sfx.pop();
+      }
+      if (Math.random() < dt * 4) renderSite(rf.site);
+    }
+    // walk past to collect the finished items
+    if (rf.out > 0 && Math.hypot(rf.x - player.x, rf.z - player.z) < 3.4 && bagRoom() > 0 && payT <= 0) {
+      rf.out--; payT = 0.1;
+      toBag(rf.output, new THREE.Vector3(rf.x, 3.2, rf.z));
+      renderSite(rf.site);
+    }
+  }
+}
 
 // --- rocket
 const rocket = { model: makeRocket(), paid: {}, done: false, launching: 0 };
@@ -627,10 +716,11 @@ colliders.push({ x: P.rocket.x, z: P.rocket.z, r: 2.4 });
 rocket.site = addSite({
   x: P.rocket.x, z: P.rocket.z, reach: 3.6,
   title: () => (rocket.done ? 'Rocket ready' : 'Broken rocket'),
+  doneText: 'READY',
   locked: () => (restore < P.restoreGoal && !rocket.done ? `Bring ${Math.round(P.restoreGoal * 100)}% of the planet to life first (${Math.floor(restore * 100)}%)` : null),
   cost: () => { if (rocket.done) return null; const left = {}; for (const [m, n] of Object.entries(P.rocket.cost)) left[m] = n - (rocket.paid[m] || 0); return left; },
   pay: (m) => { rocket.paid[m] = (rocket.paid[m] || 0) + 1; },
-  complete: () => { rocket.done = true; sfx.fanfare(); toast('Rocket repaired!', true); setTimeout(launch, 1200); },
+  complete: () => { rocket.done = true; sfx.fanfare(); toast('Rocket repaired! Launch whenever you are ready.', true); },
 });
 function refreshRocket() {
   const f = rocket.model.userData.fins;
@@ -660,6 +750,12 @@ player.model.position.set(player.x, 0, player.z);
 scene.add(player.model);
 const bagCap = () => BAG_SIZES[tools.bag] + rescued * 5;
 const bagCount = () => Object.values(bag).reduce((a, b) => a + b, 0);
+// room left, counting pieces already flying toward you
+const bagRoom = () => bagCap() - bagCount() - incoming;
+function toBag(id, from) {
+  incoming++;
+  fly(id, from, playerChest, () => { incoming--; bag[id] = (bag[id] || 0) + 1; sfx.pop(); hudDirty = true; });
+}
 const maxAir = () => AIR_TIMES[tools.suit];
 const skillLevel = (k) => Math.min(20, 1 + Math.floor(Math.sqrt(skills[k] / 6)));
 
@@ -751,7 +847,7 @@ function blocked(x, z) {
   if (Math.hypot(x, z) > P.radius - 0.5) return true;
   const ri = riverInfo(x, z);
   if (ri.d < river.width / 2 + 0.35) {
-    const onBridge = bridge.repaired && Math.abs((x - P.bridge.at[0]) * bridge.tx + (z - P.bridge.at[1]) * bridge.tz) < 1.25;
+    const onBridge = bridges.some((br) => br.repaired && Math.abs((x - br.def.at[0]) * br.tx + (z - br.def.at[1]) * br.tz) < 1.25 && Math.hypot(x - br.def.at[0], z - br.def.at[1]) < river.width);
     if (!onBridge) return true;
   }
   return false;
@@ -820,7 +916,7 @@ function gather(dt) {
     player.gathering = false;
     return;
   }
-  if (bagCount() >= bagCap()) {
+  if (bagRoom() <= 0) {
     if (performance.now() - lastNeedPickToast > 4000) { toast('Your bag is full: spend it at a sign or the workbench'); lastNeedPickToast = performance.now(); sfx.warn(); }
     player.gathering = false;
     return;
@@ -838,10 +934,7 @@ function gather(dt) {
   const before = skillLevel(m.skill);
   skills[m.skill] += 1;
   if (skillLevel(m.skill) > before) { sfx.level(); toast(`${m.skill === 'mine' ? 'Mining' : 'Woodcutting'} skill ${skillLevel(m.skill)}: faster swings, more lucky finds`, true); }
-  for (let i = 0; i < got; i++) {
-    const id = target.mat;
-    setTimeout(() => fly(id, new THREE.Vector3(target.x, 1.2, target.z), playerChest, () => { if (bagCount() < bagCap()) { bag[id] = (bag[id] || 0) + 1; sfx.pop(); hudDirty = true; } }), i * 90);
-  }
+  for (let i = 0; i < got && bagRoom() > 0; i++) toBag(target.mat, new THREE.Vector3(target.x, 1.2 + i * 0.4, target.z));
   if (target.hp <= 0) target.regrow = REGROW;
 }
 function updateNodes(dt) {
@@ -898,10 +991,9 @@ function updateExtractors(dt) {
     u.drill.position.y = 1.5 + Math.sin(performance.now() / 150) * (ex.stored < L.cap ? 0.12 : 0);
     if (ex.stored < L.cap) { ex.timer += dt; if (ex.timer >= L.every) { ex.timer = 0; ex.stored++; renderSite(ex.site); } }
     // walk past to collect
-    if (Math.hypot(ex.x - player.x, ex.z - player.z) < 3.4 && ex.stored > 0 && bagCount() < bagCap() && payT <= 0) {
+    if (Math.hypot(ex.x - player.x, ex.z - player.z) < 3.4 && ex.stored > 0 && bagRoom() > 0 && payT <= 0) {
       ex.stored--; payT = 0.08;
-      const id = ex.mat;
-      fly(id, new THREE.Vector3(ex.x, 1.8, ex.z), playerChest, () => { bag[id] = (bag[id] || 0) + 1; hudDirty = true; sfx.pop(); });
+      toBag(ex.mat, new THREE.Vector3(ex.x, 1.8, ex.z));
       renderSite(ex.site);
     }
   }
@@ -910,7 +1002,7 @@ function updateExtractors(dt) {
 // ------------------------------------------------------------------ bubble growth
 function bloomPulse(g) { g.pulse = 1; sfx.bloom(); }
 let decoT = 0;
-const SAMPLES = (() => { const r = rng(3), a = []; for (let i = 0; i < 2500; i++) { const t = r() * Math.PI * 2, d = Math.sqrt(r()) * P.radius; a.push([Math.cos(t) * d, Math.sin(t) * d]); } return a; })();
+const SAMPLES = (() => { const r = rng(3), a = []; for (let i = 0; i < 4000; i++) { const t = r() * Math.PI * 2, d = Math.sqrt(r()) * P.radius; a.push([Math.cos(t) * d, Math.sin(t) * d]); } return a; })();
 function computeRestore() {
   let n = 0;
   for (const [x, z] of SAMPLES) if (aliveAt(x, z) > 0.5) n++;
@@ -959,6 +1051,7 @@ function updateAir(dt) {
 }
 
 // ------------------------------------------------------------------ rescuing astronauts
+const homeSpot = (i) => ({ x: P.workbench.x - 4 + (i % 3) * 1.8, z: P.workbench.z + 2.5 + Math.floor(i / 3) * 1.8 });
 function updateLost(dt, t) {
   let followIdx = 0;
   for (const a of lost) {
@@ -976,7 +1069,7 @@ function updateLost(dt, t) {
         a.state = 'rescued'; rescued++;
         sfx.fanfare();
         toast(`Rescued! ${rescued}/${lost.length} safe. Your bag holds 5 more.`, true);
-        a.home = { x: P.workbench.x - 3 + a.i * 1.6, z: P.workbench.z + 2.5 };
+        a.home = homeSpot(a.i);
         hudDirty = true;
       }
     } else {
@@ -1031,9 +1124,10 @@ const sosEl = document.getElementById('sos');
 function updateHUD() {
   capEl.textContent = `${bagCount()}/${bagCap()}`;
   capEl.parentElement.classList.toggle('full', bagCount() >= bagCap());
-  hudEl.innerHTML = P.materials.filter((m) => (bag[m] || 0) > 0).map((m) => `<div class="mrow">${icon(m, 20)}<b>${bag[m]}</b></div>`).join('');
+  hudEl.innerHTML = [...P.materials, ...P.refined].filter((m) => (bag[m] || 0) > 0).map((m) => `<div class="mrow">${icon(m, 20)}<b>${bag[m]}</b></div>`).join('');
   restoreEl.style.setProperty('--p', restore);
-  restoreEl.querySelector('b').textContent = `${Math.floor(restore * 100)}%`;
+  restoreEl.querySelector('b').textContent = badge ? '100% ★' : `${Math.floor(restore * 100)}%`;
+  restoreEl.classList.toggle('gold', badge);
   sosEl.textContent = `${rescued}/${lost.length}`;
   for (const s of sites) renderSite(s);
   if (benchOpen()) renderBench();
@@ -1099,11 +1193,12 @@ function animatePlayer(dt, t) {
 // ------------------------------------------------------------------ save / load
 function save() {
   const d = {
-    v: 1, x: player.x, z: player.z, bag, tools, skills, rescued,
+    v: 2, x: player.x, z: player.z, bag, tools, skills, rescued, badge,
     gens: gens.map((g) => ({ level: g.level, paid: g.paid })),
     ex: extractors.map((e) => ({ level: e.level, stored: e.stored, paid: e.paid })),
-    bridge: { repaired: bridge.repaired, paid: bridge.paid },
-    rocket: { paid: rocket.paid, done: rocket.done },
+    bridges: bridges.map((b) => ({ repaired: b.repaired, paid: b.paid })),
+    refiners: refiners.map((r) => ({ repaired: r.repaired, paid: r.paid, loaded: r.loaded, out: r.out, t: r.t })),
+    rocket: { paid: rocket.paid, done: rocket.done, launched: rocket.launched },
     lost: lost.map((a) => ({ state: a.state === 'following' ? 'waiting' : a.state })),
   };
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(d)); } catch (e) {}
@@ -1111,17 +1206,18 @@ function save() {
 function load() {
   let d = null;
   try { d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) {}
-  if (!d || d.v !== 1) return false;
+  if (!d || d.v !== 2) return false;
   player.x = d.x; player.z = d.z;
   Object.assign(bag, d.bag); Object.assign(tools, d.tools); Object.assign(skills, d.skills);
-  rescued = d.rescued || 0;
+  rescued = d.rescued || 0; badge = !!d.badge;
   d.gens.forEach((s, i) => { if (gens[i]) { gens[i].level = s.level; gens[i].paid = s.paid || {}; gens[i].rShown = s.level >= 0 ? gens[i].radii[s.level] : 0; refreshGen(gens[i]); } });
   d.ex.forEach((s, i) => { if (extractors[i]) { Object.assign(extractors[i], { level: s.level, stored: s.stored, paid: s.paid || {} }); refreshEx(extractors[i]); } });
-  bridge.repaired = d.bridge.repaired; bridge.paid = d.bridge.paid || {}; refreshBridge();
-  rocket.paid = d.rocket.paid || {}; rocket.done = d.rocket.done;
+  (d.bridges || []).forEach((s, i) => { const b = bridges[i]; if (b) { b.repaired = s.repaired; b.paid = s.paid || {}; refreshBridge(b); } });
+  (d.refiners || []).forEach((s, i) => { const r = refiners[i]; if (r) { Object.assign(r, { repaired: s.repaired, paid: s.paid || {}, loaded: s.loaded || {}, out: s.out || 0, t: s.t || 0 }); refreshRefiner(r); } });
+  rocket.paid = d.rocket.paid || {}; rocket.done = d.rocket.done; rocket.launched = !!d.rocket.launched;
   d.lost.forEach((s, i) => {
     const a = lost[i]; if (!a) return;
-    if (s.state === 'rescued') { a.state = 'rescued'; a.dome.visible = false; a.home = { x: P.workbench.x - 3 + a.i * 1.6, z: P.workbench.z + 2.5 }; a.x = a.home.x; a.z = a.home.z; }
+    if (s.state === 'rescued') { a.state = 'rescued'; a.dome.visible = false; a.home = homeSpot(a.i); a.x = a.home.x; a.z = a.home.z; }
   });
   return true;
 }
@@ -1131,12 +1227,35 @@ addEventListener('pagehide', () => { if (playing) save(); });
 // ------------------------------------------------------------------ launch (end of the planet)
 function launch() {
   rocket.launching = 0.001;
+  rocket.launched = true;
   playing = false;
+  launchEl.classList.add('gone');
   rocket.model.userData.flame.visible = true;
+  sfx.fanfare();
+  save();
   setTimeout(() => {
+    document.getElementById('win-title').textContent = badge ? 'Planet restored!' : 'Lift off!';
+    document.getElementById('win-badge').classList.toggle('gone', !badge);
     document.getElementById('win-stats').textContent = `${Math.floor(restore * 100)}% of the planet alive · ${rescued}/${lost.length} astronauts rescued`;
+    document.getElementById('win-text').textContent = badge
+      ? 'Every corner of the planet is alive again. You earned the gold planet badge.'
+      : 'You flew home. You can come back and bring the rest of the planet to life for the gold badge.';
     document.getElementById('win').classList.remove('gone');
   }, 3200);
+}
+const launchEl = document.getElementById('launch');
+launchEl.addEventListener('click', () => { if (rocket.done && playing) launch(); });
+function updateLaunchButton() {
+  const near = rocket.done && playing && !rocket.launching && Math.hypot(P.rocket.x - player.x, P.rocket.z - player.z) < 4.2;
+  launchEl.classList.toggle('gone', !near);
+}
+function checkBadge() {
+  if (!badge && restore >= 0.995) {
+    badge = true; hudDirty = true;
+    sfx.fanfare();
+    toast('The whole planet is alive! Gold planet badge earned ★', true);
+    save();
+  }
 }
 
 // ------------------------------------------------------------------ screens
@@ -1157,7 +1276,7 @@ function begin() {
 }
 document.getElementById('go').addEventListener('click', begin);
 document.getElementById('fresh').addEventListener('click', () => { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} location.reload(); });
-document.getElementById('again').addEventListener('click', () => { document.getElementById('win').classList.add('gone'); playing = true; rocket.model.position.y = 0; rocket.model.userData.flame.visible = false; rocket.launching = 0; });
+document.getElementById('again').addEventListener('click', () => { document.getElementById('win').classList.add('gone'); playing = true; rocket.model.position.y = 0; rocket.model.userData.flame.visible = false; rocket.launching = 0; toast('Welcome back. The rocket is ready whenever you are.'); });
 const muteBtn = document.getElementById('mute');
 muteBtn.classList.toggle('off', sfx.muted);
 muteBtn.addEventListener('click', () => { sfx.init(); sfx.toggle(); muteBtn.classList.toggle('off', sfx.muted); });
@@ -1197,6 +1316,9 @@ function update(dt) {
     if (!player.floating) gather(dt); else player.gathering = false;
     updateSites(dt);
     updateExtractors(dt);
+    updateRefiners(dt, t);
+    updateLaunchButton();
+    checkBadge();
     updateAir(dt);
     updateLost(dt, t);
     saveT += dt; if (saveT > 5) { saveT = 0; save(); }
@@ -1218,6 +1340,6 @@ function update(dt) {
 requestAnimationFrame(frame);
 
 // hooks for automated playtesting
-window.__bloom = { step: (n) => { for (let i = 0; i < n; i++) update(1 / 30); }, player, bag, tools, gens, nodes, sites, extractors, bridge, rocket, lost, get restore() { return restore; }, begin, give: (m, n) => { bag[m] = (bag[m] || 0) + n; hudDirty = true; } };
+window.__bloom = { step: (n) => { for (let i = 0; i < n; i++) update(1 / 30); }, player, bag, tools, gens, nodes, sites, extractors, bridges, refiners, rocket, lost, launch, get restore() { return restore; }, begin, give: (m, n) => { bag[m] = (bag[m] || 0) + n; hudDirty = true; } };
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});

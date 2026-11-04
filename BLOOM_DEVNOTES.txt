@@ -1,6 +1,6 @@
 =======================================
   BLOOM — DEVELOPMENT NOTES
-  Phase 1 — November 2, 2026
+  Phase 2 — November 3, 2026
 =======================================
 
 THE IDEA (Todd)
@@ -82,3 +82,46 @@ I solved the rocket pretty fast, so I know that will be more complex soon.  But 
 I could not do the rocket until 50% explored, which was fine, and I stayed behind to explore more, but by the time I upgraded all my bubble generators, harvesters, bridge, and workbench options, I had only completed 57% of the planet.  There was nothing else for me to open, upgrade or expand, so how do I get to 100% planet exploration?  Is that coming as well?
 Upcoming work would be machines to repair where two basic items like crystal and stone are put and out comes a polished crystal cube, and that is needed by the rocket, a way to combine base resources and generate refined items, and even refined items would combine later to a level 3 item.  We have time to build this well.  Given this type of expansive work, we may want to increase the game board size by another 50% to make room.  I am just fine with the round board, but want to ensure we have space to add some additional equipment for repairing.
 Thanks so much.  This type of game building is much more rewarding and much more enjoyable for me than where we were earlier this year.
+
+PHASE 2 (Nov 3) — from Todd's notes
+-----------------------------------
+Decisions with Todd: no storage locker yet (try touch-gathering first);
+refining machines work load -> wait -> collect.
+
+Fixes
+- Gathering now needs touch: you only work on a tree/rock when you're right
+  up against it (REACH 0.75 past its edge; you stop about 0.45 away).
+- Bag cheat fixed: pieces already flying toward you count against the bag,
+  so an extractor (or anything else) can never overfill it.
+- Rocket: repairing it no longer launches it. Walk up to the repaired rocket
+  and a Launch button appears; stay as long as you like and launch later.
+  After lift-off, "Keep exploring" brings you back and the rocket waits again.
+
+Bigger planet, 100% reachable
+- Planet radius 93 (was 62, +50%). 21 bubble generators on a hex-like
+  layout; every generator has 4 sizes (9 / 15 / 22 / 30). With all of them
+  maxed the whole planet comes alive (checked: 100%).
+- Generator costs come from a formula by distance from home (tier 0-3),
+  ready for the planet generator later. The final, biggest size of every
+  non-home bubble needs polished crystal, so 100% needs refining.
+- Launch still unlocks at 50%. Reaching 100% earns the gold planet badge
+  (gold bar and star in the HUD, shown on the lift-off screen). The badge
+  is the hook for the carry-over bonus on the next planet (to design).
+- Two broken bridges now (west and east). 3 extractors, 6 lost astronauts,
+  more trees/rocks/crystals/ore spread over the bigger map.
+
+Refining (new)
+- Three broken machines to repair, then load, wait, collect (walk past):
+  Kiln:      2 stone + 2 red crystal -> polished crystal (6s)
+  Smelter:   2 gold + 1 wood         -> gold bar (7s)
+  Assembler: 1 polished crystal + 1 gold bar -> power core (10s, tier 3;
+             its repair needs refined items)
+- Each machine's sign shows its recipe, a "Load" row for hopper space,
+  stored output and progress.
+- Rocket now needs: 30 stone, 4 polished crystal, 4 gold bars, 3 power
+  cores. The golden pickaxe needs gold bars.
+- Saves are v2 (the bigger planet starts fresh once).
+
+Playtest (automated): touch gathering, extractor bag limit, kiln repair /
+load / collect, both bridges, 100% coverage, gold badge, launch button.
+

@@ -62,6 +62,11 @@
   .up button:disabled { background: #b8c2d6; }
   .skills { font-size: 11px; opacity: .7; padding-top: 6px; border-top: 1px solid rgba(29,42,74,.1); }
 
+  #launch { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 18%); transform: translateX(-50%); z-index: 5; transition: opacity .25s; }
+  #restore.gold::before { background: linear-gradient(90deg, #ffd65a, #ffb347); }
+  .badge { width: 64px; height: 64px; margin: 4px auto 6px; border-radius: 50%; display: grid; place-items: center; font-size: 36px; color: #fff; background: radial-gradient(circle at 35% 30%, #fff3c0, #ffd65a 50%, #d9a520); box-shadow: 0 0 24px rgba(255,214,90,.6); }
+  .lbl { font-size: 11px; font-weight: 800; opacity: .6; align-self: center; }
+  .recipe { display: inline-flex; align-items: center; gap: 3px; font-weight: 900; font-size: 13px; }
   #toast { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 92px); transform: translateX(-50%); max-width: calc(100vw - 32px); padding: 9px 16px; border-radius: 14px; background: rgba(13,24,52,.85); color: #fff; font-weight: 800; font-size: 14px; text-align: center; pointer-events: none; transition: opacity .35s; }
   #toast.good { background: var(--good); }
   #hint { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 12%); transform: translateX(-50%); color: #fff; background: rgba(13,24,52,.6); padding: 8px 16px; border-radius: 99px; font-weight: 700; font-size: 14px; pointer-events: none; transition: opacity .8s; white-space: nowrap; }
@@ -95,6 +100,7 @@
   </div>
 </div>
 <div id="bench" class="gone"></div>
+<button id="launch" class="big gone">Launch</button>
 <div id="toast" class="gone"></div>
 <div id="hint" class="gone">Press and pull to walk</div>
 <div id="stick" class="gone"><i></i></div>
@@ -107,8 +113,9 @@
 </div></div>
 <div class="screen gone" id="win"><div>
   <div class="orb"></div>
-  <h1 style="font-size:40px">Lift off!</h1>
-  <p>You brought the planet back to life and flew home. The next planet is on its way.</p>
+  <h1 style="font-size:40px" id="win-title">Lift off!</h1>
+  <div id="win-badge" class="badge gone">★</div>
+  <p id="win-text"></p>
   <p id="win-stats" style="font-weight:800"></p>
   <button class="big" id="again">Keep exploring</button>
 </div></div>
