@@ -60,14 +60,20 @@ export const PLANET1 = {
   // broken refining machines: repair, load two raw materials, wait, collect the refined item
   refiners: [
     { id: 'kiln', name: 'Kiln', x: -6, z: 64, repair: { stone: 20, wood: 12 },
-      inputs: { stone: 2, redCrystal: 2 }, output: 'polishedCrystal', secs: 6, hold: 5, store: 10 },
+      inputs: { stone: 2, redCrystal: 2 }, output: 'polishedCrystal', secs: 6, hold: 10, store: 10 },
     { id: 'smelter', name: 'Smelter', x: -52, z: 36, repair: { stone: 18, redCrystal: 12 },
-      inputs: { gold: 2, wood: 1 }, output: 'goldBar', secs: 7, hold: 5, store: 10 },
+      inputs: { gold: 2, wood: 1 }, output: 'goldBar', secs: 7, hold: 10, store: 10 },
     { id: 'assembler', name: 'Assembler', x: 56, z: -52, repair: { stone: 20, polishedCrystal: 3, goldBar: 3 },
-      inputs: { polishedCrystal: 1, goldBar: 1 }, output: 'powerCore', secs: 10, hold: 4, store: 6 },
+      inputs: { polishedCrystal: 1, goldBar: 1 }, output: 'powerCore', secs: 10, hold: 6, store: 6 },
   ],
 
   workbench: { x: -17, z: 56 },
+  // storage shed: starts broken; each level holds more, and higher levels take refined items
+  shed: { x: -32, z: 46, levels: [
+    { cost: { wood: 16, stone: 10 }, cap: 100, holds: ['wood', 'stone', 'redCrystal', 'gold'] },
+    { cost: { wood: 20, redCrystal: 12 }, cap: 200, holds: ['wood', 'stone', 'redCrystal', 'gold', 'polishedCrystal', 'goldBar'] },
+    { cost: { gold: 12, polishedCrystal: 4 }, cap: 350, holds: ['wood', 'stone', 'redCrystal', 'gold', 'polishedCrystal', 'goldBar', 'powerCore'] },
+  ] },
   rocket: { x: -36, z: 64, cost: { stone: 30, polishedCrystal: 4, goldBar: 4, powerCore: 3 } },
 
   // lost astronauts waiting in little help bubbles

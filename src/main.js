@@ -9,7 +9,7 @@ const SAVE_KEY = 'bloom-save-v2'; // the bigger planet: older saves start fresh
 const WALK = 6.2;            // walking speed (units / s)
 const FLOAT_HOME = 10;       // speed when the suit floats you home
 const REACH = 0.75;          // walk right up and touch it to gather (you stop about 0.45 from it)
-const SITE_REACH = 2.8;      // how close you need to be to pay into a sign
+const SITE_REACH = 2.0;      // generators: you stop about 1.55 from their centre, so this is touching
 const BASE_SWING = 0.62;     // seconds between tool swings at level 1
 const REGROW = 45;           // seconds for a used-up node to grow back
 const TOOL_SPEED = [1, 1.5, 2.1];
@@ -440,7 +440,8 @@ const nodes = [];
           Math.hypot(P.rocket.x - x, P.rocket.z - z) > 4.5 && Math.hypot(P.workbench.x - x, P.workbench.z - z) > 3.5 &&
           Math.hypot(P.start.x - x, P.start.z - z) > 2.5 &&
           !P.extractors.some((e) => Math.hypot(e.x - x, e.z - z) < 4) && !P.bridges.some((b) => Math.hypot(b.at[0] - x, b.at[1] - z) < 7) &&
-          !P.refiners.some((m) => Math.hypot(m.x - x, m.z - z) < 4.5);
+          !P.refiners.some((m) => Math.abs(m.x - x) < 6.5 && Math.abs(m.z - z) < 3.5) && Math.hypot(P.shed.x - x, P.shed.z - z) > 4.5 &&
+          Math.hypot(P.workbench.x - x, P.workbench.z - 1.5 - z) > 5.5;
       }
       if (!ok) continue;
       const type = zone.node;
@@ -522,10 +523,10 @@ function renderSite(site) {
   let html = `<b>${site.title()}</b>`;
   const lock = site.locked && site.locked();
   if (lock) html += `<span class="lock">${lock}</span>`;
-  else if (!c) html += `<span class="max">${site.doneText || 'MAX'}</span>`;
+  else if (!c) html += site.doneText === '' ? '' : `<span class="max">${site.doneText || 'MAX'}</span>`;
   else {
     html += `<span class="row">${site.rowLabel && site.rowLabel() ? `<span class="lbl">${site.rowLabel()}</span>` : ''}`;
-    for (const [m, n] of Object.entries(c)) if (n > 0) html += `<span class="cost${(bag[m] || 0) > 0 ? ' have' : ''}">${icon(m, 18)}${n}</span>`;
+    for (const [m, n] of Object.entries(c)) if (n > 0 || (site.showFull && site.showFull())) html += `<span class="cost${(bag[m] || 0) > 0 && n > 0 ? ' have' : ''}">${icon(m, 18)}${site.costText ? site.costText(m, n) : n}</span>`;
     html += '</span>';
   }
   if (site.extra) html += site.extra();
@@ -581,7 +582,7 @@ for (const ex of extractors) {
   ex.sign = makeSign(); ex.sign.position.set(ex.x + 2.2, 0, ex.z + 1.4); scene.add(ex.sign);
   colliders.push({ x: ex.x, z: ex.z, r: 1.3 });
   ex.site = addSite({
-    x: ex.x, z: ex.z, reach: 3.4,
+    x: ex.x, z: ex.z, reach: 2.2,
     title: () => (ex.level < 0 ? `${MATERIALS[ex.mat].name} extractor` : `Extractor · LVL ${ex.level + 1}`),
     cost: () => {
       const base = ex.level < 0 ? ex.build : ex.costs[ex.level];
@@ -610,7 +611,7 @@ const bridges = P.bridges.map((def, i) => {
   br.whole = makeBridge(true, info.tx, info.tz); br.whole.position.set(bx, 0, bz); br.whole.visible = false; scene.add(br.whole);
   br.sign = makeSign(); br.sign.position.set(bx - info.tz * 6 + info.tx * 2, 0, bz + info.tx * 6 + info.tz * 2); scene.add(br.sign);
   br.site = addSite({
-    x: bx - info.tz * 5.2, z: bz + info.tx * 5.2, reach: 3.2,
+    x: bx - info.tz * 6, z: bz + info.tx * 6, reach: 1.6,
     title: () => 'Broken bridge',
     cost: () => { if (br.repaired) return null; const left = {}; for (const [m, n] of Object.entries(def.cost)) left[m] = n - (br.paid[m] || 0); return left; },
     pay: (m) => { br.paid[m] = (br.paid[m] || 0) + 1; },
@@ -621,52 +622,67 @@ const bridges = P.bridges.map((def, i) => {
 });
 function refreshBridge(br) { br.broken.visible = !br.repaired; br.whole.visible = br.repaired; br.sign.visible = !br.repaired; }
 
-// --- refining machines: repair them, load two raw materials, wait, collect the refined item
+// --- refining machines: a long machine with a LOAD end (west) and a PICKUP end (east)
 const refiners = P.refiners.map((def) => ({ ...def, repaired: false, paid: {}, loaded: {}, out: 0, t: 0 }));
 function makeRefiner(def) {
   const grp = new THREE.Group();
-  const base = mesh(new THREE.CylinderGeometry(1.6, 1.8, 0.5, 18), '#dfe4ee'); base.position.y = 0.25;
-  const body = mesh(new THREE.CylinderGeometry(1.0, 1.25, 1.8, 16), def.id === 'smelter' ? '#8a8f9a' : def.id === 'kiln' ? '#c97b5a' : '#e8ecf3'); body.position.y = 1.4;
-  const cap = mesh(new THREE.ConeGeometry(1.1, 0.8, 16), '#3d8bff'); cap.position.y = 2.7;
-  const chute = mesh(new THREE.BoxGeometry(0.7, 0.5, 0.9), '#9aa1ad'); chute.position.set(0, 0.9, 1.25);
-  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.32, 14, 10), new THREE.MeshBasicMaterial({ color: '#5ff2ff' }));
-  glow.position.set(0, 1.6, 1.12);
-  const out = mesh(new THREE.OctahedronGeometry(0.3, 0), MATERIALS[def.output].color, { flatShading: true, emissive: MATERIALS[def.output].color, emissiveIntensity: 0.3 });
-  out.position.set(0, 3.4, 0);
-  grp.add(base, body, cap, chute, glow, out);
-  // broken look: bits lying around
+  const bodyCol = def.id === 'smelter' ? '#8a8f9a' : def.id === 'kiln' ? '#c97b5a' : '#e8ecf3';
+  const deck = mesh(new THREE.BoxGeometry(7.2, 0.5, 2.4), '#dfe4ee'); deck.position.y = 0.25;
+  const belt = mesh(new THREE.BoxGeometry(7.0, 0.12, 1.2), '#4b5160'); belt.position.y = 0.56;
+  // the hopper you load at the west end
+  const hopper = mesh(new THREE.CylinderGeometry(1.0, 0.5, 1.2, 4), '#9aa1ad', { flatShading: true }); hopper.position.set(-2.6, 1.4, 0); hopper.rotation.y = Math.PI / 4;
+  const inPad = mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.06, 20), '#3d8bff'); inPad.position.set(-4.4, 0.03, 0);
+  // the furnace in the middle
+  const body = mesh(new THREE.BoxGeometry(2.2, 1.9, 2.0), bodyCol); body.position.set(0, 1.45, 0);
+  const cap = mesh(new THREE.ConeGeometry(1.0, 0.8, 4), '#3d8bff', { flatShading: true }); cap.position.set(0, 2.8, 0); cap.rotation.y = Math.PI / 4;
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.3, 14, 10), new THREE.MeshBasicMaterial({ color: '#5ff2ff' })); glow.position.set(0, 1.4, 1.02);
+  // the pickup tray at the east end
+  const tray = mesh(new THREE.BoxGeometry(1.8, 0.4, 1.8), '#f5c542'); tray.position.set(2.7, 0.8, 0);
+  const outPad = mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.06, 20), '#2f9e57'); outPad.position.set(4.4, 0.03, 0);
+  const out = mesh(new THREE.OctahedronGeometry(0.32, 0), MATERIALS[def.output].color, { flatShading: true, emissive: MATERIALS[def.output].color, emissiveIntensity: 0.3 });
+  out.position.set(2.7, 1.5, 0);
+  grp.add(deck, belt, hopper, inPad, body, cap, glow, tray, outPad, out);
   const junk = new THREE.Group();
-  for (let i = 0; i < 4; i++) { const j = mesh(new THREE.BoxGeometry(0.5, 0.3, 0.4), '#9aa1ad'); j.position.set(Math.cos(i * 1.7) * 2, 0.15, Math.sin(i * 1.7) * 2); j.rotation.y = i; junk.add(j); }
+  for (let i = 0; i < 5; i++) { const j = mesh(new THREE.BoxGeometry(0.5, 0.3, 0.4), '#9aa1ad'); j.position.set(-3 + i * 1.5, 0.15, (i % 2 ? 1.6 : -1.6)); j.rotation.y = i; junk.add(j); }
   grp.add(junk);
-  grp.userData = { glow, out, cap, body, junk };
+  grp.userData = { glow, out, cap, body, junk, tray };
   return grp;
 }
 for (const rf of refiners) {
   rf.model = makeRefiner(rf); rf.model.position.set(rf.x, 0, rf.z); scene.add(rf.model);
-  colliders.push({ x: rf.x, z: rf.z, r: 1.4 });
+  for (const dx of [-2.4, 0, 2.4]) colliders.push({ x: rf.x + dx, z: rf.z, r: 1.15 });
+  rf.inX = rf.x - 4.4; rf.outX = rf.x + 4.4;
+  const maxIn = (m) => rf.inputs[m] * rf.hold;
   rf.site = addSite({
-    x: rf.x, z: rf.z + 0.6, reach: 3.4,
-    title: () => (rf.repaired ? rf.name : `Broken ${rf.name.toLowerCase()}`),
+    x: rf.inX, z: rf.z, reach: 1.5,
+    title: () => (rf.repaired ? `${rf.name} · load here` : `Broken ${rf.name.toLowerCase()}`),
     cost: () => {
       if (!rf.repaired) { const left = {}; for (const [m, n] of Object.entries(rf.repair)) left[m] = n - (rf.paid[m] || 0); return left; }
-      // once repaired, the "cost" is whatever its hopper still has room for
-      const left = {}; let any = false;
-      for (const [m, n] of Object.entries(rf.inputs)) { left[m] = n * rf.hold - (rf.loaded[m] || 0); if (left[m] > 0) any = true; }
-      return any ? left : {};
+      const left = {};
+      for (const m of Object.keys(rf.inputs)) left[m] = maxIn(m) - (rf.loaded[m] || 0);
+      return left;
     },
+    // once repaired, show what's loaded out of what it can hold
+    costText: (m, n) => (rf.repaired ? `${rf.loaded[m] || 0}/${maxIn(m)}` : n),
+    showFull: () => rf.repaired,
     pay: (m) => { if (!rf.repaired) rf.paid[m] = (rf.paid[m] || 0) + 1; else rf.loaded[m] = (rf.loaded[m] || 0) + 1; },
     complete: () => {
       if (rf.repaired) return; // a full hopper isn't an event
       rf.repaired = true; rf.paid = {}; sfx.build();
-      toast(`${rf.name} repaired! Load it, then collect ${MATERIALS[rf.output].name.toLowerCase()}.`, true);
-      refreshRefiner(rf);
+      toast(`${rf.name} repaired! Load it at the blue pad, pick up at the green pad.`, true);
+      refreshRefiner(rf); renderSite(rf.outSite);
     },
+    extra: () => `<span class="recipe">${recipeHtml(rf)}</span>`,
+  });
+  rf.outSite = addSite({
+    x: rf.outX, z: rf.z, reach: 1.5,
+    title: () => 'Pickup',
+    hidden: () => !rf.repaired,
+    cost: () => null, doneText: '',
     extra: () => {
-      if (!rf.repaired) return `<span class="recipe">${recipeHtml(rf)}</span>`;
       const pct = Math.round((rf.t / rf.secs) * 100);
-      return `<span class="recipe">${recipeHtml(rf)}</span><span class="store">${icon(rf.output, 16)} ${rf.out}/${rf.store}${canRun(rf) ? ` · ${pct}%` : ''}</span>`;
+      return `<span class="store">${icon(rf.output, 18)} Ready ${rf.out}/${rf.store}</span>${canRun(rf) ? `<span class="prog"><i style="width:${pct}%"></i></span>` : rf.out >= rf.store ? '<span class="lock">Tray full: collect to keep it working</span>' : ''}`;
     },
-    rowLabel: () => (rf.repaired ? 'Load' : ''),
   });
   refreshRefiner(rf);
 }
@@ -678,17 +694,17 @@ function refreshRefiner(rf) {
   const u = rf.model.userData;
   u.junk.visible = !rf.repaired;
   u.cap.visible = rf.repaired;
-  u.body.rotation.z = rf.repaired ? 0 : 0.25;
+  u.body.rotation.z = rf.repaired ? 0 : 0.2;
   u.glow.material.color.set(rf.repaired ? '#5ff2ff' : '#6b7280');
 }
 function updateRefiners(dt, t) {
   for (const rf of refiners) {
     const u = rf.model.userData;
-    u.out.visible = rf.repaired;
+    u.out.visible = rf.repaired && rf.out > 0;
     if (!rf.repaired) continue;
     const running = canRun(rf);
-    u.out.rotation.y += dt * (running ? 3 : 0.6);
-    u.out.position.y = 3.4 + Math.sin(t * 2) * 0.12;
+    u.out.rotation.y += dt * 1.5;
+    u.out.position.y = 1.5 + Math.sin(t * 2) * 0.1;
     u.glow.scale.setScalar(running ? 1 + Math.sin(t * 10) * 0.15 : 0.8);
     if (running) {
       rf.t += dt;
@@ -696,15 +712,15 @@ function updateRefiners(dt, t) {
         rf.t = 0;
         for (const [m, n] of Object.entries(rf.inputs)) rf.loaded[m] -= n;
         rf.out++;
-        sfx.pop();
+        sfx.pop(); renderSite(rf.site);
       }
-      if (Math.random() < dt * 4) renderSite(rf.site);
+      if (Math.random() < dt * 4) renderSite(rf.outSite);
     }
-    // walk past to collect the finished items
-    if (rf.out > 0 && Math.hypot(rf.x - player.x, rf.z - player.z) < 3.4 && bagRoom() > 0 && payT <= 0) {
+    // touch the pickup pad to collect
+    if (rf.out > 0 && Math.hypot(rf.outX - player.x, rf.z - player.z) < 1.5 && bagRoom() > 0 && payT <= 0) {
       rf.out--; payT = 0.1;
-      toBag(rf.output, new THREE.Vector3(rf.x, 3.2, rf.z));
-      renderSite(rf.site);
+      toBag(rf.output, new THREE.Vector3(rf.x + 2.7, 1.5, rf.z));
+      renderSite(rf.outSite);
     }
   }
 }
@@ -714,7 +730,7 @@ const rocket = { model: makeRocket(), paid: {}, done: false, launching: 0 };
 rocket.model.position.set(P.rocket.x, 0, P.rocket.z); scene.add(rocket.model);
 colliders.push({ x: P.rocket.x, z: P.rocket.z, r: 2.4 });
 rocket.site = addSite({
-  x: P.rocket.x, z: P.rocket.z, reach: 3.6,
+  x: P.rocket.x, z: P.rocket.z, reach: 3.3,
   title: () => (rocket.done ? 'Rocket ready' : 'Broken rocket'),
   doneText: 'READY',
   locked: () => (restore < P.restoreGoal && !rocket.done ? `Bring ${Math.round(P.restoreGoal * 100)}% of the planet to life first (${Math.floor(restore * 100)}%)` : null),
@@ -729,10 +745,115 @@ function refreshRocket() {
   rocket.model.userData.nose.rotation.z = rocket.done ? 0 : 0.35 * (1 - fixed);
 }
 
-// --- workbench
+// --- workbench: four signposts around it, one per upgrade, paid like any other sign
 const bench = makeWorkbench();
-bench.position.set(P.workbench.x, 0, P.workbench.z); scene.add(bench);
-colliders.push({ x: P.workbench.x, z: P.workbench.z - 1.0, r: 1.2 });
+bench.position.set(P.workbench.x, 0, P.workbench.z - 1.5); scene.add(bench);
+colliders.push({ x: P.workbench.x, z: P.workbench.z - 2.5, r: 1.2 });
+const toolPaid = { pick: {}, axe: {}, bag: {}, suit: {} };
+const BENCH_SIGNS = { pick: [-3.6, 1.2], axe: [-1.25, 2.6], bag: [1.25, 2.6], suit: [3.6, 1.2] };
+for (const [key, [ox, oz]] of Object.entries(BENCH_SIGNS)) {
+  const u = UPGRADES[key];
+  const sx = P.workbench.x + ox, sz = P.workbench.z + oz;
+  const sign = makeSign(); sign.position.set(sx, 0, sz - 0.6); sign.rotation.y = Math.atan2(ox, oz) * 0.3; scene.add(sign);
+  addSite({
+    x: sx, z: sz, reach: 1.2,
+    title: () => `${u.name}${u.costs[tools[key]] ? ` → ${u.note[tools[key] + 1]}` : `: ${u.note[tools[key]]}`}`,
+    cost: () => {
+      const base = u.costs[tools[key]];
+      if (!base) return null;
+      const left = {};
+      for (const [m, n] of Object.entries(base)) left[m] = n - (toolPaid[key][m] || 0);
+      return left;
+    },
+    pay: (m) => { toolPaid[key][m] = (toolPaid[key][m] || 0) + 1; },
+    complete: () => {
+      toolPaid[key] = {};
+      tools[key]++;
+      if (key === 'suit') player.air = maxAir();
+      sfx.build();
+      toast(`${u.name} upgraded: ${u.note[tools[key]]}`, true);
+      hudDirty = true;
+    },
+  });
+}
+
+// --- storage shed: touch it, then tap a material on the left to store it all or take it back
+const shed = { store: {}, open: false, level: -1, paid: {} }; // level -1 = broken
+const shedCap = () => (shed.level >= 0 ? P.shed.levels[shed.level].cap : 0);
+const shedHolds = (m) => shed.level >= 0 && P.shed.levels[shed.level].holds.includes(m);
+function makeShed() {
+  const grp = new THREE.Group();
+  const walls = mesh(new THREE.BoxGeometry(3.2, 2.2, 2.6), '#c08a52'); walls.position.y = 1.1;
+  const roof = mesh(new THREE.ConeGeometry(2.6, 1.3, 4), '#ef4b5f', { flatShading: true }); roof.position.y = 2.85; roof.rotation.y = Math.PI / 4; roof.scale.set(1.05, 1, 0.85);
+  const door = mesh(new THREE.BoxGeometry(1.0, 1.6, 0.1), '#7d5230'); door.position.set(0, 0.8, 1.32);
+  const pad = mesh(new THREE.CylinderGeometry(1.0, 1.0, 0.06, 20), '#f5c542'); pad.position.set(0, 0.03, 2.4);
+  const planks = new THREE.Group();
+  for (let i = 0; i < 4; i++) { const pl = mesh(new THREE.BoxGeometry(1.6, 0.12, 0.35), '#9c6a3b'); pl.position.set(-1.6 + i * 1.1, 0.08, 1.9 + (i % 2) * 0.4); pl.rotation.y = i * 0.7; planks.add(pl); }
+  grp.add(walls, roof, door, pad, planks);
+  grp.userData = { roof, walls, planks, pad };
+  return grp;
+}
+shed.model = makeShed(); shed.model.position.set(P.shed.x, 0, P.shed.z); scene.add(shed.model);
+colliders.push({ x: P.shed.x, z: P.shed.z, r: 1.6 });
+function refreshShed() {
+  const u = shed.model.userData, ok = shed.level >= 0;
+  u.roof.visible = ok; u.planks.visible = !ok; u.pad.visible = ok;
+  u.walls.rotation.z = ok ? 0 : 0.12; u.walls.scale.y = ok ? 1 : 0.7; u.walls.position.y = ok ? 1.1 : 0.77;
+}
+{ const sg = makeSign(); sg.position.set(P.shed.x + 2.8, 0, P.shed.z + 0.4); scene.add(sg); }
+addSite({
+  x: P.shed.x + 2.8, z: P.shed.z + 1.2, reach: 1.3,
+  title: () => (shed.level < 0 ? 'Broken shed' : `Shed · LVL ${shed.level + 1}`),
+  cost: () => {
+    const next = P.shed.levels[shed.level + 1];
+    if (!next) return null;
+    const left = {}; for (const [m, n] of Object.entries(next.cost)) left[m] = n - (shed.paid[m] || 0); return left;
+  },
+  extra: () => {
+    const next = P.shed.levels[shed.level + 1];
+    if (!next) return '';
+    const newOnes = next.holds.filter((m) => !(shed.level >= 0 && P.shed.levels[shed.level].holds.includes(m)) && MATERIALS[m].refined);
+    return `<span class="lock">Holds ${next.cap}${newOnes.length ? ' and ' + newOnes.map((m) => icon(m, 14)).join(' ') : ''}</span>`;
+  },
+  pay: (m) => { shed.paid[m] = (shed.paid[m] || 0) + 1; },
+  complete: () => {
+    shed.paid = {}; shed.level++; refreshShed(); sfx.build();
+    toast(shed.level === 0 ? 'Shed repaired! Stand on its yellow pad to store things.' : `Shed upgraded: holds ${shedCap()}`, true);
+  },
+});
+refreshShed();
+const shedCount = () => Object.values(shed.store).reduce((a, b) => a + b, 0);
+const shedEl = document.getElementById('shed');
+function shedNear() { return shed.level >= 0 && Math.hypot(P.shed.x - player.x, P.shed.z + 2.4 - player.z) < 1.5; }
+function renderShed() {
+  let html = `<div class="shead">Shed<span>${shedCount()}/${shedCap()}</span></div>`;
+  for (const m of [...P.materials, ...P.refined]) {
+    const b = bag[m] || 0, st = shed.store[m] || 0;
+    if (!b && !st) continue;
+    const ok = shedHolds(m) || st > 0;
+    html += `<button class="srow${ok ? '' : ' no'}" data-m="${m}" aria-label="${MATERIALS[m].name}">${icon(m, 24)}<span><b>${b}</b><i>${ok ? st : 'upgrade'}</i></span></button>`;
+  }
+  html += '<div class="shint">bag · shed<br>tap to store all or take back</div>';
+  shedEl.innerHTML = html;
+}
+shedEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-m]');
+  if (!btn) return;
+  const m = btn.dataset.m;
+  if ((bag[m] || 0) > 0) {
+    if (!shedHolds(m)) { toast(`Upgrade the shed to store ${MATERIALS[m].name.toLowerCase()}`); sfx.warn(); return; }
+    const n = Math.min(bag[m], shedCap() - shedCount());
+    if (n <= 0) { toast('The shed is full'); sfx.warn(); return; }
+    bag[m] -= n; shed.store[m] = (shed.store[m] || 0) + n;
+    sfx.pay(); toast(`Stored ${n} ${MATERIALS[m].name.toLowerCase()}`);
+  } else {
+    const n = Math.min(shed.store[m] || 0, Math.max(0, bagRoom()));
+    if (n <= 0) { toast('Your bag is full'); sfx.warn(); return; }
+    shed.store[m] -= n; bag[m] = (bag[m] || 0) + n;
+    sfx.pop(); toast(`Took ${n} ${MATERIALS[m].name.toLowerCase()}`);
+  }
+  hudDirty = true; renderShed();
+});
 
 // --- lost astronauts
 const lost = P.astronauts.map(([x, z], i) => {
@@ -965,7 +1086,7 @@ function updateSites(dt) {
     const c = s.cost();
     const near = Math.hypot(s.x - player.x, s.z - player.z) < s.reach;
     s.near = near;
-    if (!near || !c || (s.locked && s.locked())) continue;
+    if (!near || !c || !s.pay || (s.locked && s.locked())) continue;
     if (payT > 0) continue;
     const need = Object.entries(c).find(([m, n]) => n > 0 && (bag[m] || 0) > 0);
     if (!need) continue;
@@ -991,7 +1112,7 @@ function updateExtractors(dt) {
     u.drill.position.y = 1.5 + Math.sin(performance.now() / 150) * (ex.stored < L.cap ? 0.12 : 0);
     if (ex.stored < L.cap) { ex.timer += dt; if (ex.timer >= L.every) { ex.timer = 0; ex.stored++; renderSite(ex.site); } }
     // walk past to collect
-    if (Math.hypot(ex.x - player.x, ex.z - player.z) < 3.4 && ex.stored > 0 && bagRoom() > 0 && payT <= 0) {
+    if (Math.hypot(ex.x - player.x, ex.z - player.z) < 2.2 && ex.stored > 0 && bagRoom() > 0 && payT <= 0) {
       ex.stored--; payT = 0.08;
       toBag(ex.mat, new THREE.Vector3(ex.x, 1.8, ex.z));
       renderSite(ex.site);
@@ -1051,6 +1172,125 @@ function updateAir(dt) {
 }
 
 // ------------------------------------------------------------------ rescuing astronauts
+// ---- crew: rescued astronauts get a job. Gatherers bring one material to the shed;
+// explorers wander the dead zone and come back with surprises.
+const CREW_NAMES = ['Ava', 'Kai', 'Mira', 'Leo', 'Juno', 'Theo', 'Nova', 'Remy'];
+const JOBS = [{ type: 'gather', mat: 'wood' }, { type: 'gather', mat: 'stone' }, { type: 'explore' }, { type: 'gather', mat: 'redCrystal' }, { type: 'gather', mat: 'gold' }, { type: 'explore' }];
+const CREW_SPEED = 4.2, CARRY = 5;
+function assignJob(a, order) {
+  a.name = CREW_NAMES[a.i % CREW_NAMES.length];
+  a.job = JOBS[order % JOBS.length]; a.jobIdx = order;
+  a.task = 'find'; a.carry = 0; a.t = 0; a.target = null;
+  a.el.innerHTML = a.job.type === 'gather' ? `${a.name} ${icon(a.job.mat, 14)}` : `${a.name} · explorer`;
+}
+function jobText(a) { return a.job.type === 'gather' ? `They'll gather ${MATERIALS[a.job.mat].name.toLowerCase()} for the shed` : 'They\'ll explore and bring back surprises'; }
+function riverZAt(x) {
+  const pts = river.points;
+  for (let i = 0; i < pts.length - 1; i++) if (x >= pts[i][0] && x <= pts[i + 1][0]) return lerp(pts[i][1], pts[i + 1][1], (x - pts[i][0]) / (pts[i + 1][0] - pts[i][0]));
+  return 0;
+}
+const shedSide = () => P.shed.z > riverZAt(P.shed.x);
+const sameSide = (x, z) => (z > riverZAt(x)) === shedSide();
+const shedPad = () => ({ x: P.shed.x + (Math.random() - 0.5) * 1.2, z: P.shed.z + 2.6 });
+function walkTo(a, tx, tz, dt) {
+  const dx = tx - a.x, dz = tz - a.z, d = Math.hypot(dx, dz);
+  if (d < 0.25) return true;
+  const sp = Math.min(d, CREW_SPEED * dt);
+  a.x += (dx / d) * sp; a.z += (dz / d) * sp; a.m.rotation.y = Math.atan2(dx, dz);
+  a.walking = true;
+  return false;
+}
+function shedPut(m, n) {
+  if (!shedHolds(m)) return 0;
+  const k = Math.min(n, shedCap() - shedCount());
+  if (k > 0) { shed.store[m] = (shed.store[m] || 0) + k; if (shed.open) renderShed(); }
+  return k;
+}
+function crewWork(a, dt, t) {
+  a.walking = false; a.working = false;
+  if (!a.job) assignJob(a, a.jobIdx || 0);
+  if (shed.level < 0) {
+    // nothing to do until the shed is repaired: wait near it
+    if (!a.idleSpot) a.idleSpot = { x: P.shed.x - 3 + a.i * 1.2, z: P.shed.z + 4.5 };
+    walkTo(a, a.idleSpot.x, a.idleSpot.z, dt);
+  } else if (a.job.type === 'gather') {
+    if (a.task === 'find') {
+      let best = null, bd = Infinity;
+      for (const n of nodes) {
+        if (n.mat !== a.job.mat || n.hp <= 0 || (n.claim && n.claim !== a) || aliveAt(n.x, n.z) < 0.6 || !sameSide(n.x, n.z)) continue;
+        const d = Math.hypot(n.x - P.shed.x, n.z - P.shed.z);
+        if (d < bd && d < 70) { bd = d; best = n; }
+      }
+      if (best) { a.target = best; best.claim = a; a.task = 'walk'; } else { a.t += dt; if (a.t > 3) a.t = 0; }
+    } else if (a.task === 'walk') {
+      const n = a.target;
+      if (!n || n.hp <= 0) { a.task = a.carry ? 'return' : 'find'; if (n) n.claim = null; }
+      else {
+        const dx = n.x - a.x, dz = n.z - a.z, d = Math.hypot(dx, dz);
+        if (d < n.r + 1.05) { a.task = "work"; a.t = 0; } else walkTo(a, n.x - (dx / d) * (n.r + 0.7), n.z - (dz / d) * (n.r + 0.7), dt);
+      }
+    } else if (a.task === 'work') {
+      const n = a.target;
+      a.working = true;
+      a.m.rotation.y = Math.atan2(n.x - a.x, n.z - a.z);
+      a.t += dt;
+      if (a.t > 1.3) {
+        a.t = 0;
+        if (n.hp > 0) { n.hp--; n.shake = 1; a.carry++; if (n.hp <= 0) n.regrow = REGROW; }
+        if (a.carry >= CARRY || n.hp <= 0) { n.claim = null; a.task = 'return'; a.dest = shedPad(); }
+      }
+    } else if (a.task === 'return') {
+      if (!a.dest) a.dest = shedPad();
+      if (walkTo(a, a.dest.x, a.dest.z, dt)) {
+        const put = shedPut(a.job.mat, a.carry);
+        a.carry -= put; a.dest = null;
+        a.task = a.carry > 0 ? 'full' : 'find';
+      }
+    } else if (a.task === 'full') {
+      // the shed is full: wait by it until there's room
+      a.t += dt;
+      if (a.t > 2) { a.t = 0; const put = shedPut(a.job.mat, a.carry); a.carry -= put; if (!a.carry) a.task = 'find'; }
+    }
+  } else {
+    // explorer
+    if (a.task === 'find') {
+      let spot = null;
+      for (let k = 0; k < 40 && !spot; k++) {
+        const ang = Math.random() * Math.PI * 2, d = 20 + Math.random() * (P.radius - 26);
+        const x = Math.cos(ang) * d, z = Math.sin(ang) * d;
+        if (sameSide(x, z) && aliveAt(x, z) < 0.3) spot = { x, z };
+      }
+      if (!spot) { const ang = Math.random() * Math.PI * 2; spot = { x: P.shed.x + Math.cos(ang) * 30, z: P.shed.z + Math.sin(ang) * 20 }; if (!sameSide(spot.x, spot.z) || Math.hypot(spot.x, spot.z) > P.radius - 4) spot = { x: P.shed.x + 8, z: P.shed.z + 6 }; }
+      a.dest = spot; a.task = 'out';
+    } else if (a.task === 'out') {
+      if (walkTo(a, a.dest.x, a.dest.z, dt)) { a.task = 'search'; a.t = 0; }
+    } else if (a.task === 'search') {
+      a.working = true; a.t += dt;
+      if (a.t > 4) { a.task = 'return'; a.dest = shedPad(); }
+    } else if (a.task === 'return') {
+      if (walkTo(a, a.dest.x, a.dest.z, dt)) {
+        const found = {};
+        const picks = [...P.materials].sort(() => Math.random() - 0.5).slice(0, 2);
+        for (const m of picks) found[m] = 2 + Math.floor(Math.random() * 3);
+        if (Math.random() < 0.3) found[Math.random() < 0.5 ? 'polishedCrystal' : 'goldBar'] = 1;
+        if (Math.random() < 0.06) found.powerCore = 1;
+        const kept = [];
+        for (const [m, n] of Object.entries(found)) { const k = shedPut(m, n); if (k) kept.push(`${k} ${MATERIALS[m].name.toLowerCase()}`); }
+        if (kept.length && Math.hypot(a.x - player.x, a.z - player.z) < 40) toast(`${a.name} brought back ${kept.join(', ')}`);
+        a.task = 'rest'; a.t = 0;
+      }
+    } else if (a.task === 'rest') {
+      a.t += dt;
+      if (a.t > 6) a.task = 'find';
+    }
+  }
+  // look busy
+  const u = a.m.userData;
+  a.m.position.set(a.x, a.walking ? Math.abs(Math.sin(t * 9 + a.i)) * 0.08 : 0, a.z);
+  u.legL.rotation.x = a.walking ? Math.sin(t * 10 + a.i) * 0.6 : 0; u.legR.rotation.x = -u.legL.rotation.x;
+  u.arm.rotation.x = a.working ? -1.6 + Math.abs(Math.sin(t * 4.8 + a.i)) * 1.6 : 0;
+  u.arm.rotation.z = 0;
+}
 const homeSpot = (i) => ({ x: P.workbench.x - 4 + (i % 3) * 1.8, z: P.workbench.z + 2.5 + Math.floor(i / 3) * 1.8 });
 function updateLost(dt, t) {
   let followIdx = 0;
@@ -1067,54 +1307,17 @@ function updateLost(dt, t) {
       a.m.position.set(a.x, Math.abs(Math.sin(t * 9)) * 0.08, a.z);
       if (aliveAt(a.x, a.z) > 0.7) {
         a.state = 'rescued'; rescued++;
+        assignJob(a, rescued - 1);
         sfx.fanfare();
-        toast(`Rescued! ${rescued}/${lost.length} safe. Your bag holds 5 more.`, true);
+        toast(`${a.name} is safe (${rescued}/${lost.length})! ${jobText(a)}. Your bag holds 5 more.`, true);
         a.home = homeSpot(a.i);
         hudDirty = true;
       }
-    } else {
-      // rescued: stroll back near the workbench and wave
-      const dx = a.home.x - a.x, dz = a.home.z - a.z, d = Math.hypot(dx, dz);
-      if (d > 0.3) { const sp = Math.min(d, WALK * 0.6 * dt); a.x += (dx / d) * sp; a.z += (dz / d) * sp; a.m.rotation.y = Math.atan2(dx, dz); }
-      else a.m.rotation.y = Math.PI;
-      a.m.position.set(a.x, d > 0.3 ? Math.abs(Math.sin(t * 8)) * 0.06 : 0, a.z);
-      a.m.userData.arm.rotation.z = d > 0.3 ? 0 : -2.4 + Math.sin(t * 5 + a.i) * 0.4;
-    }
-    a.el.classList.toggle('gone', a.state !== 'waiting');
+    } else crewWork(a, dt, t);
+    a.el.classList.toggle('crew', a.state === 'rescued');
+    a.el.classList.toggle('gone', a.state === 'following' || (a.state === 'rescued' && Math.hypot(a.x - player.x, a.z - player.z) > 22));
   }
 }
-
-// ------------------------------------------------------------------ the workbench panel
-const benchEl = document.getElementById('bench');
-function benchOpen() { return Math.hypot(P.workbench.x - player.x, P.workbench.z - player.z) < 2.6; }
-function renderBench() {
-  let html = '<h3>Workbench</h3>';
-  for (const [key, u] of Object.entries(UPGRADES)) {
-    const lvl = tools[key], cost = u.costs[lvl];
-    const can = cost && Object.entries(cost).every(([m, n]) => (bag[m] || 0) >= n);
-    html += `<div class="up"><div class="upn"><b>${u.name}</b><span>${u.note[lvl]}</span></div>`;
-    if (!cost) html += '<span class="max">MAX</span>';
-    else {
-      html += '<span class="row">' + Object.entries(cost).map(([m, n]) => `<span class="cost${(bag[m] || 0) >= n ? ' have' : ''}">${icon(m, 16)}${n}</span>`).join('') + '</span>';
-      html += `<button data-up="${key}" ${can ? '' : 'disabled'}>Upgrade</button>`;
-    }
-    html += '</div>';
-  }
-  html += `<div class="skills">Mining skill ${skillLevel('mine')} · Woodcutting skill ${skillLevel('chop')}</div>`;
-  benchEl.innerHTML = html;
-}
-benchEl.addEventListener('click', (e) => {
-  const b = e.target.closest('button[data-up]');
-  if (!b) return;
-  const key = b.dataset.up, u = UPGRADES[key], cost = u.costs[tools[key]];
-  if (!cost || !Object.entries(cost).every(([m, n]) => (bag[m] || 0) >= n)) return;
-  for (const [m, n] of Object.entries(cost)) bag[m] -= n;
-  tools[key]++;
-  if (key === 'suit') player.air = maxAir();
-  sfx.build();
-  toast(`${u.name} upgraded: ${u.note[tools[key]]}`, true);
-  hudDirty = true; renderBench();
-});
 
 // ------------------------------------------------------------------ HUD
 const hudEl = document.getElementById('bagrows');
@@ -1130,7 +1333,7 @@ function updateHUD() {
   restoreEl.classList.toggle('gold', badge);
   sosEl.textContent = `${rescued}/${lost.length}`;
   for (const s of sites) renderSite(s);
-  if (benchOpen()) renderBench();
+  if (shed.open) renderShed();
   hudDirty = false;
 }
 let toastTimer = 0;
@@ -1144,7 +1347,7 @@ function project(x, y, z) { v3.set(x, y, z).project(camera); return [(v3.x * 0.5
 function updateOverlays() {
   for (const s of sites) {
     const d = Math.hypot(s.x - player.x, s.z - player.z);
-    const show = d < 24 && !(s.hideWhenDone && !s.cost());
+    const show = d < 24 && !(s.hideWhenDone && !s.cost()) && !(s.hidden && s.hidden());
     s.el.classList.toggle('gone', !show);
     s.el.classList.toggle('near', !!s.near);
     if (!show) continue;
@@ -1153,15 +1356,16 @@ function updateOverlays() {
     if (sz > 1) s.el.classList.add('gone');
   }
   for (const a of lost) {
-    if (a.state !== 'waiting') continue;
-    const [sx, sy] = project(a.x, 3.6, a.z);
+    if (a.state === 'following') continue;
+    const [sx, sy] = project(a.x, a.state === 'rescued' ? 2.6 : 3.6, a.z);
     a.el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
   }
   const [ax, ay] = project(player.x, 2.6, player.z);
   airEl.style.transform = `translate(${ax}px, ${ay}px) translate(-50%, -100%)`;
-  const open = benchOpen() && playing;
-  if (open && benchEl.classList.contains('gone')) renderBench();
-  benchEl.classList.toggle('gone', !open);
+  const open = shedNear() && playing;
+  if (open && !shed.open) renderShed();
+  shed.open = open;
+  shedEl.classList.toggle('gone', !open);
 }
 
 // ------------------------------------------------------------------ camera
@@ -1199,7 +1403,8 @@ function save() {
     bridges: bridges.map((b) => ({ repaired: b.repaired, paid: b.paid })),
     refiners: refiners.map((r) => ({ repaired: r.repaired, paid: r.paid, loaded: r.loaded, out: r.out, t: r.t })),
     rocket: { paid: rocket.paid, done: rocket.done, launched: rocket.launched },
-    lost: lost.map((a) => ({ state: a.state === 'following' ? 'waiting' : a.state })),
+    lost: lost.map((a) => ({ state: a.state === 'following' ? 'waiting' : a.state, jobIdx: a.jobIdx, x: a.x, z: a.z })),
+    shed: { level: shed.level, paid: shed.paid, store: shed.store }, toolPaid,
   };
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(d)); } catch (e) {}
 }
@@ -1215,9 +1420,11 @@ function load() {
   (d.bridges || []).forEach((s, i) => { const b = bridges[i]; if (b) { b.repaired = s.repaired; b.paid = s.paid || {}; refreshBridge(b); } });
   (d.refiners || []).forEach((s, i) => { const r = refiners[i]; if (r) { Object.assign(r, { repaired: s.repaired, paid: s.paid || {}, loaded: s.loaded || {}, out: s.out || 0, t: s.t || 0 }); refreshRefiner(r); } });
   rocket.paid = d.rocket.paid || {}; rocket.done = d.rocket.done; rocket.launched = !!d.rocket.launched;
+  if (d.shed) { shed.level = d.shed.level; shed.paid = d.shed.paid || {}; Object.assign(shed.store, d.shed.store || {}); refreshShed(); }
+  if (d.toolPaid) Object.assign(toolPaid, d.toolPaid);
   d.lost.forEach((s, i) => {
     const a = lost[i]; if (!a) return;
-    if (s.state === 'rescued') { a.state = 'rescued'; a.dome.visible = false; a.home = homeSpot(a.i); a.x = a.home.x; a.z = a.home.z; }
+    if (s.state === 'rescued') { a.state = 'rescued'; a.dome.visible = false; a.home = homeSpot(a.i); a.x = s.x ?? a.home.x; a.z = s.z ?? a.home.z; assignJob(a, s.jobIdx || 0); }
   });
   return true;
 }
@@ -1340,6 +1547,6 @@ function update(dt) {
 requestAnimationFrame(frame);
 
 // hooks for automated playtesting
-window.__bloom = { step: (n) => { for (let i = 0; i < n; i++) update(1 / 30); }, player, bag, tools, gens, nodes, sites, extractors, bridges, refiners, rocket, lost, launch, get restore() { return restore; }, begin, give: (m, n) => { bag[m] = (bag[m] || 0) + n; hudDirty = true; } };
+window.__bloom = { step: (n) => { for (let i = 0; i < n; i++) update(1 / 30); }, player, bag, tools, gens, nodes, sites, extractors, bridges, refiners, rocket, lost, launch, shed, get restore() { return restore; }, begin, give: (m, n) => { bag[m] = (bag[m] || 0) + n; hudDirty = true; } };
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});

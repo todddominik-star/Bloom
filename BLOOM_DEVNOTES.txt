@@ -142,3 +142,22 @@ Options Claude proposed (nothing built yet):
     each working like every other sign (stand on it to pay). Walking past
     a signpost you don't want simply does nothing.
 
+
+PHASE 3 — touch, shed, signposts, crew
+- Every transfer is touch-only now: you have to stand on a thing's pad or
+  sign to give it materials or take from it.
+- Refineries are long machines: blue IN pad (load, shows loaded/max) at one
+  end, green OUT pad (pickup, shows Ready n/max) at the other. Load and
+  storage are both 10 (Assembler 6). The label now matches what it takes.
+- Storage shed (next to home): starts broken. Repair it, then stand on its
+  yellow pad and tap a material in the left panel to store all of it, or tap
+  again to take some back. Level 1 holds 100 raw; Level 2 holds 200 and adds
+  polished crystal + gold bars; Level 3 holds 350 and adds power cores.
+- Workbench is option C: four signposts (pickaxe, axe, backpack, suit).
+  Walk onto one to pay toward that upgrade; partial payments are kept.
+- Rescued astronauts get jobs by rescue order: Ava wood, Kai stone, Mira
+  explorer, Leo red crystal, Juno gold, Theo explorer. Gatherers chop/mine
+  on their own side of the river and drop it in the shed. Explorers search
+  dead spots and bring back random finds (sometimes refined items).
+  Crew wait by the shed until it's repaired.
+- Not yet: refinery upgrades for bigger batches.
