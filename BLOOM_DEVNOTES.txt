@@ -161,3 +161,9 @@ PHASE 3 — touch, shed, signposts, crew
   dead spots and bring back random finds (sometimes refined items).
   Crew wait by the shed until it's repaired.
 - Not yet: refinery upgrades for bigger batches.
+
+PHASE 3.1 — percent fix
+- Bug: the gold badge fired at 99.5% and the top bar then showed "100% ★",
+  while the launch screen rounded down and said 99%. Now every screen uses
+  the same number, it never rounds up to 100, and the badge needs a true
+  100% (every bubble maxed — checked: all 21 maxed = exactly 100%).

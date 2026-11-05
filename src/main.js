@@ -733,7 +733,7 @@ rocket.site = addSite({
   x: P.rocket.x, z: P.rocket.z, reach: 3.3,
   title: () => (rocket.done ? 'Rocket ready' : 'Broken rocket'),
   doneText: 'READY',
-  locked: () => (restore < P.restoreGoal && !rocket.done ? `Bring ${Math.round(P.restoreGoal * 100)}% of the planet to life first (${Math.floor(restore * 100)}%)` : null),
+  locked: () => (restore < P.restoreGoal && !rocket.done ? `Bring ${Math.round(P.restoreGoal * 100)}% of the planet to life first (${pctAlive()}%)` : null),
   cost: () => { if (rocket.done) return null; const left = {}; for (const [m, n] of Object.entries(P.rocket.cost)) left[m] = n - (rocket.paid[m] || 0); return left; },
   pay: (m) => { rocket.paid[m] = (rocket.paid[m] || 0) + 1; },
   complete: () => { rocket.done = true; sfx.fanfare(); toast('Rocket repaired! Launch whenever you are ready.', true); },
@@ -1124,6 +1124,8 @@ function updateExtractors(dt) {
 function bloomPulse(g) { g.pulse = 1; sfx.bloom(); }
 let decoT = 0;
 const SAMPLES = (() => { const r = rng(3), a = []; for (let i = 0; i < 4000; i++) { const t = r() * Math.PI * 2, d = Math.sqrt(r()) * P.radius; a.push([Math.cos(t) * d, Math.sin(t) * d]); } return a; })();
+// one number for every screen: whole percent, never rounded up to a 100 that isn't real
+function pctAlive() { return restore >= 1 ? 100 : Math.min(99, Math.floor(restore * 100)); }
 function computeRestore() {
   let n = 0;
   for (const [x, z] of SAMPLES) if (aliveAt(x, z) > 0.5) n++;
@@ -1329,7 +1331,7 @@ function updateHUD() {
   capEl.parentElement.classList.toggle('full', bagCount() >= bagCap());
   hudEl.innerHTML = [...P.materials, ...P.refined].filter((m) => (bag[m] || 0) > 0).map((m) => `<div class="mrow">${icon(m, 20)}<b>${bag[m]}</b></div>`).join('');
   restoreEl.style.setProperty('--p', restore);
-  restoreEl.querySelector('b').textContent = badge ? '100% ★' : `${Math.floor(restore * 100)}%`;
+  restoreEl.querySelector('b').textContent = badge ? '100% ★' : `${pctAlive()}%`;
   restoreEl.classList.toggle('gold', badge);
   sosEl.textContent = `${rescued}/${lost.length}`;
   for (const s of sites) renderSite(s);
@@ -1443,7 +1445,7 @@ function launch() {
   setTimeout(() => {
     document.getElementById('win-title').textContent = badge ? 'Planet restored!' : 'Lift off!';
     document.getElementById('win-badge').classList.toggle('gone', !badge);
-    document.getElementById('win-stats').textContent = `${Math.floor(restore * 100)}% of the planet alive · ${rescued}/${lost.length} astronauts rescued`;
+    document.getElementById('win-stats').textContent = `${badge ? 100 : pctAlive()}% of the planet alive · ${rescued}/${lost.length} astronauts rescued`;
     document.getElementById('win-text').textContent = badge
       ? 'Every corner of the planet is alive again. You earned the gold planet badge.'
       : 'You flew home. You can come back and bring the rest of the planet to life for the gold badge.';
@@ -1457,7 +1459,7 @@ function updateLaunchButton() {
   launchEl.classList.toggle('gone', !near);
 }
 function checkBadge() {
-  if (!badge && restore >= 0.995) {
+  if (!badge && restore >= 1) {
     badge = true; hudDirty = true;
     sfx.fanfare();
     toast('The whole planet is alive! Gold planet badge earned ★', true);
