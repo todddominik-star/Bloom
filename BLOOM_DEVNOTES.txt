@@ -201,3 +201,10 @@ PHASE 4 — storage limits, tiers, crystal bridge, upgrades, map, boarding
 - Launch: a 10-second countdown above the rocket. Your crew walk in (far
   ones appear from just off screen) and disappear behind the rocket through
   a hatch you never see; you board last. Liftoff at zero.
+
+PHASE 4.1 — shed tap fix
+- Bug: with some of a material in your bag and a full shelf, tapping did
+  nothing forever (it only took items out when your bag had none).
+- Now one tap stores if any of it can go in; if nothing can (shelf full, or
+  the shed isn't upgraded for it), the tap takes some out instead, up to
+  your backpack room, never more. The message says which happened.

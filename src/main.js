@@ -876,24 +876,28 @@ function renderShed() {
     const ok = shedHolds(m) || st > 0;
     html += `<button class="srow${ok ? '' : ' no'}${ok && st >= capOf(m) ? ' full' : ''}" data-m="${m}" aria-label="${MATERIALS[m].name}">${icon(m, 24)}<span><b>${b}</b><i>${ok ? `${st}/${capOf(m)}` : 'upgrade'}</i></span></button>`;
   }
-  html += '<div class="shint">bag · shed<br>tap to store all or take back</div>';
+  html += '<div class="shint">bag · shed<br>tap to store; when it can\'t store, a tap takes some out</div>';
   shedEl.innerHTML = html;
 }
 shedEl.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-m]');
   if (!btn) return;
-  const m = btn.dataset.m;
-  if ((bag[m] || 0) > 0) {
-    if (!shedHolds(m)) { toast(`Upgrade the shed to store ${MATERIALS[m].name.toLowerCase()}`); sfx.warn(); return; }
-    const n = Math.min(bag[m], shedRoom(m));
-    if (n <= 0) { toast(`The shed is full of ${MATERIALS[m].name.toLowerCase()} (${capOf(m)})`); sfx.warn(); return; }
-    bag[m] -= n; shed.store[m] = (shed.store[m] || 0) + n;
-    sfx.pay(); toast(`Stored ${n} ${MATERIALS[m].name.toLowerCase()}`);
+  const m = btn.dataset.m, name = MATERIALS[m].name.toLowerCase();
+  // one tap: store it if any of it can go in; if nothing can, take some out instead
+  const canStore = Math.min(bag[m] || 0, shedRoom(m));
+  if (canStore > 0) {
+    bag[m] -= canStore; shed.store[m] = (shed.store[m] || 0) + canStore;
+    sfx.pay(); toast(`Stored ${canStore} ${name}`);
   } else {
     const n = Math.min(shed.store[m] || 0, Math.max(0, bagRoom()));
-    if (n <= 0) { toast('Your bag is full'); sfx.warn(); return; }
-    shed.store[m] -= n; bag[m] = (bag[m] || 0) + n;
-    sfx.pop(); toast(`Took ${n} ${MATERIALS[m].name.toLowerCase()}`);
+    if (n > 0) {
+      shed.store[m] -= n; bag[m] = (bag[m] || 0) + n;
+      sfx.pop();
+      toast((bag[m] - n) > 0 ? (shedHolds(m) ? `Shed is full of ${name}, took ${n}` : `Took ${n} ${name}`) : `Took ${n} ${name}`);
+    } else if ((bag[m] || 0) > 0 && !shedHolds(m)) { toast(`Upgrade the shed to store ${name}`); sfx.warn(); }
+    else if ((bag[m] || 0) > 0 && !(shed.store[m] > 0)) { toast(`The shed is full of ${name}`); sfx.warn(); }
+    else if (!(shed.store[m] > 0)) { toast(`No ${name} in the shed`); sfx.warn(); }
+    else { toast('Your bag is full'); sfx.warn(); }
   }
   hudDirty = true; renderShed();
 });
