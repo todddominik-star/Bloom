@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MATERIALS, icon } from './materials.js';
+import { MATERIALS, icon, STAGE_CAP, STAGE_NAME } from './materials.js';
 import { PLANET1, NODE_MATERIAL } from './planet.js';
 
 const P = PLANET1;
@@ -400,24 +400,36 @@ function makeRocket() {
   grp.userData = { fins, flame, body, nose };
   return grp;
 }
-function makeBridge(repaired, tx, tz) {
+// bridge looks: wood and stone, glowing crystal, or solid gold
+const BRIDGE_LOOK = {
+  wood: { a: '#b07a45', b: '#9c6a3b', post: '#7d5230', rail: '#8a5a35', opts: {} },
+  crystal: { a: '#ff7a8f', b: '#ef4b5f', post: '#ff9fb0', rail: '#ffc2cd', opts: { emissive: '#ef4b5f', emissiveIntensity: 0.35, transparent: true, opacity: 0.92 }, crystal: true },
+  gold: { a: '#ffd65a', b: '#f5c542', post: '#d9a520', rail: '#ffe58a', opts: { emissive: '#c99a1c', emissiveIntensity: 0.15 } },
+};
+function makeBridge(repaired, tx, tz, kind = 'wood') {
   // built in a local frame where the river runs along X and you walk across it along Z
+  const L = BRIDGE_LOOK[kind] || BRIDGE_LOOK.wood;
   const grp = new THREE.Group();
   const half = river.width / 2 + 1.2;
   const n = Math.round((half * 2) / 0.48);
   for (let i = 0; i <= n; i++) {
     if (!repaired && (i % 3 === 1 || (i > n * 0.3 && i < n * 0.7))) continue;
-    const pl = mesh(new THREE.BoxGeometry(2.6, 0.14, 0.42), i % 2 ? '#b07a45' : '#9c6a3b');
+    const pl = mesh(new THREE.BoxGeometry(2.6, 0.14, 0.42), i % 2 ? L.a : L.b, L.opts);
     pl.position.set(repaired ? 0 : (i % 2 ? 0.15 : -0.1), 0.32, -half + i * 0.48);
     if (!repaired) pl.rotation.y = (i % 2 ? 0.12 : -0.08);
     grp.add(pl);
   }
   for (const sx of [-1.4, 1.4]) for (const sz of [-half, half]) {
-    const post = mesh(new THREE.CylinderGeometry(0.12, 0.14, 1.2, 6), '#7d5230');
-    post.position.set(sx, 0.6, sz);
+    const post = L.crystal ? mesh(new THREE.OctahedronGeometry(0.4, 0), L.post, { ...L.opts, flatShading: true }) : mesh(new THREE.CylinderGeometry(0.12, 0.14, 1.2, 6), L.post, L.opts);
+    post.position.set(sx, L.crystal ? 0.9 : 0.6, sz);
+    if (L.crystal) post.scale.set(0.7, 1.6, 0.7);
     grp.add(post);
   }
-  if (repaired) for (const sx of [-1.4, 1.4]) { const rail = mesh(new THREE.BoxGeometry(0.1, 0.1, half * 2), '#8a5a35'); rail.position.set(sx, 1.1, 0); grp.add(rail); }
+  if (repaired) for (const sx of [-1.4, 1.4]) { const rail = mesh(new THREE.BoxGeometry(0.1, 0.1, half * 2), L.rail, L.opts); rail.position.set(sx, 1.1, 0); grp.add(rail); }
+  if (repaired && L.crystal) for (let i = 1; i < 6; i++) for (const sx of [-1.4, 1.4]) {
+    const sp = mesh(new THREE.OctahedronGeometry(0.16, 0), L.post, { ...L.opts, flatShading: true });
+    sp.position.set(sx, 1.25, -half + (i * half * 2) / 6); sp.scale.set(0.7, 1.4, 0.7); grp.add(sp);
+  }
   grp.rotation.y = -Math.atan2(tz, tx);
   return grp;
 }
@@ -607,12 +619,12 @@ const bridges = P.bridges.map((def, i) => {
   const [bx, bz] = def.at;
   const info = riverInfo(bx, bz);
   const br = { def, i, repaired: false, paid: {}, tx: info.tx, tz: info.tz };
-  br.broken = makeBridge(false, info.tx, info.tz); br.broken.position.set(bx, 0, bz); scene.add(br.broken);
-  br.whole = makeBridge(true, info.tx, info.tz); br.whole.position.set(bx, 0, bz); br.whole.visible = false; scene.add(br.whole);
+  br.broken = makeBridge(false, info.tx, info.tz, def.kind); br.broken.position.set(bx, 0, bz); scene.add(br.broken);
+  br.whole = makeBridge(true, info.tx, info.tz, def.kind); br.whole.position.set(bx, 0, bz); br.whole.visible = false; scene.add(br.whole);
   br.sign = makeSign(); br.sign.position.set(bx - info.tz * 6 + info.tx * 2, 0, bz + info.tx * 6 + info.tz * 2); scene.add(br.sign);
   br.site = addSite({
     x: bx - info.tz * 6, z: bz + info.tx * 6, reach: 1.6,
-    title: () => 'Broken bridge',
+    title: () => (def.kind === 'crystal' ? 'Broken crystal bridge' : def.kind === 'gold' ? 'Broken golden bridge' : 'Broken bridge'),
     cost: () => { if (br.repaired) return null; const left = {}; for (const [m, n] of Object.entries(def.cost)) left[m] = n - (br.paid[m] || 0); return left; },
     pay: (m) => { br.paid[m] = (br.paid[m] || 0) + 1; },
     complete: () => { br.repaired = true; sfx.build(); toast('Bridge repaired! You can cross the river here.', true); refreshBridge(br); },
@@ -623,7 +635,13 @@ const bridges = P.bridges.map((def, i) => {
 function refreshBridge(br) { br.broken.visible = !br.repaired; br.whole.visible = br.repaired; br.sign.visible = !br.repaired; }
 
 // --- refining machines: a long machine with a LOAD end (west) and a PICKUP end (east)
-const refiners = P.refiners.map((def) => ({ ...def, repaired: false, paid: {}, loaded: {}, out: 0, t: 0 }));
+const refiners = P.refiners.map((def) => ({ ...def, repaired: false, paid: {}, loaded: {}, out: 0, t: 0, level: 0, upPaid: {} }));
+// LVL 1 after repair, then two upgrades: faster, and bigger loads and trays
+const RF_SPEED = [1, 0.7, 0.5], RF_SIZE = [1, 1.5, 2];
+const rfSecs = (rf) => rf.secs * RF_SPEED[rf.level];
+const rfHold = (rf) => Math.round(rf.hold * RF_SIZE[rf.level]);
+const rfStore = (rf) => Math.round(rf.store * RF_SIZE[rf.level]);
+const rfMax = (rf) => rf.level >= rf.upgrades.length;
 function makeRefiner(def) {
   const grp = new THREE.Group();
   const bodyCol = def.id === 'smelter' ? '#8a8f9a' : def.id === 'kiln' ? '#c97b5a' : '#e8ecf3';
@@ -652,7 +670,7 @@ for (const rf of refiners) {
   rf.model = makeRefiner(rf); rf.model.position.set(rf.x, 0, rf.z); scene.add(rf.model);
   for (const dx of [-2.4, 0, 2.4]) colliders.push({ x: rf.x + dx, z: rf.z, r: 1.15 });
   rf.inX = rf.x - 4.4; rf.outX = rf.x + 4.4;
-  const maxIn = (m) => rf.inputs[m] * rf.hold;
+  const maxIn = (m) => rf.inputs[m] * rfHold(rf);
   rf.site = addSite({
     x: rf.inX, z: rf.z, reach: 1.5,
     title: () => (rf.repaired ? `${rf.name} · load here` : `Broken ${rf.name.toLowerCase()}`),
@@ -680,8 +698,26 @@ for (const rf of refiners) {
     hidden: () => !rf.repaired,
     cost: () => null, doneText: '',
     extra: () => {
-      const pct = Math.round((rf.t / rf.secs) * 100);
-      return `<span class="store">${icon(rf.output, 18)} Ready ${rf.out}/${rf.store}</span>${canRun(rf) ? `<span class="prog"><i style="width:${pct}%"></i></span>` : rf.out >= rf.store ? '<span class="lock">Tray full: collect to keep it working</span>' : ''}`;
+      const pct = Math.round((rf.t / rfSecs(rf)) * 100);
+      return `<span class="store">${icon(rf.output, 18)} Ready ${rf.out}/${rfStore(rf)}</span>${canRun(rf) ? `<span class="prog"><i style="width:${pct}%"></i></span>` : rf.out >= rfStore(rf) ? '<span class="lock">Tray full: collect to keep it working</span>' : ''}`;
+    },
+  });
+  // the upgrade sign in front of the machine
+  rf.upSign = makeSign(); rf.upSign.position.set(rf.x + 0.8, 0, rf.z + 2.4); scene.add(rf.upSign);
+  rf.upSite = addSite({
+    x: rf.x, z: rf.z + 2.6, reach: 1.3,
+    title: () => `${rf.name} · LVL ${rf.level + 1}${rfMax(rf) ? '' : ' → faster, bigger'}`,
+    hidden: () => !rf.repaired,
+    cost: () => {
+      const base = rf.upgrades[rf.level];
+      if (!base) return null;
+      const left = {}; for (const [m, n] of Object.entries(base)) left[m] = n - (rf.upPaid[m] || 0); return left;
+    },
+    pay: (m) => { rf.upPaid[m] = (rf.upPaid[m] || 0) + 1; },
+    complete: () => {
+      rf.upPaid = {}; rf.level++; sfx.build();
+      toast(`${rf.name} upgraded${rfMax(rf) ? ' (MAX)' : ''}: works faster, holds ${rfHold(rf)} loads, tray ${rfStore(rf)}`, true);
+      refreshRefiner(rf); renderSite(rf.site); renderSite(rf.outSite);
     },
   });
   refreshRefiner(rf);
@@ -689,13 +725,16 @@ for (const rf of refiners) {
 function recipeHtml(rf) {
   return Object.entries(rf.inputs).map(([m, n]) => `${n}${icon(m, 14)}`).join(' + ') + ` → ${icon(rf.output, 16)}`;
 }
-function canRun(rf) { return rf.repaired && rf.out < rf.store && Object.entries(rf.inputs).every(([m, n]) => (rf.loaded[m] || 0) >= n); }
+function canRun(rf) { return rf.repaired && rf.out < rfStore(rf) && Object.entries(rf.inputs).every(([m, n]) => (rf.loaded[m] || 0) >= n); }
 function refreshRefiner(rf) {
   const u = rf.model.userData;
   u.junk.visible = !rf.repaired;
   u.cap.visible = rf.repaired;
   u.body.rotation.z = rf.repaired ? 0 : 0.2;
   u.glow.material.color.set(rf.repaired ? '#5ff2ff' : '#6b7280');
+  rf.upSign.visible = rf.repaired && !rfMax(rf);
+  // a gold cap once it's maxed out
+  u.cap.material = mat(rfMax(rf) ? '#f5c542' : '#3d8bff', { flatShading: true });
 }
 function updateRefiners(dt, t) {
   for (const rf of refiners) {
@@ -708,7 +747,7 @@ function updateRefiners(dt, t) {
     u.glow.scale.setScalar(running ? 1 + Math.sin(t * 10) * 0.15 : 0.8);
     if (running) {
       rf.t += dt;
-      if (rf.t >= rf.secs) {
+      if (rf.t >= rfSecs(rf)) {
         rf.t = 0;
         for (const [m, n] of Object.entries(rf.inputs)) rf.loaded[m] -= n;
         rf.out++;
@@ -779,8 +818,12 @@ for (const [key, [ox, oz]] of Object.entries(BENCH_SIGNS)) {
 
 // --- storage shed: touch it, then tap a material on the left to store it all or take it back
 const shed = { store: {}, open: false, level: -1, paid: {} }; // level -1 = broken
-const shedCap = () => (shed.level >= 0 ? P.shed.levels[shed.level].cap : 0);
-const shedHolds = (m) => shed.level >= 0 && P.shed.levels[shed.level].holds.includes(m);
+// each level unlocks a stage of items; every item has its own limit (50 raw, 25 refined, 10 manufactured)
+const shedStage = () => (shed.level >= 0 ? P.shed.levels[shed.level].stage : -1);
+const shedHolds = (m) => MATERIALS[m].stage <= shedStage();
+const capOf = (m) => STAGE_CAP[MATERIALS[m].stage];
+const shedRoom = (m) => (shedHolds(m) ? Math.max(0, capOf(m) - (shed.store[m] || 0)) : 0);
+const shedFull = (m) => shedRoom(m) <= 0;
 function makeShed() {
   const grp = new THREE.Group();
   const walls = mesh(new THREE.BoxGeometry(3.2, 2.2, 2.6), '#c08a52'); walls.position.y = 1.1;
@@ -812,13 +855,13 @@ addSite({
   extra: () => {
     const next = P.shed.levels[shed.level + 1];
     if (!next) return '';
-    const newOnes = next.holds.filter((m) => !(shed.level >= 0 && P.shed.levels[shed.level].holds.includes(m)) && MATERIALS[m].refined);
-    return `<span class="lock">Holds ${next.cap}${newOnes.length ? ' and ' + newOnes.map((m) => icon(m, 14)).join(' ') : ''}</span>`;
+    const newOnes = [...P.materials, ...P.refined].filter((m) => MATERIALS[m].stage === next.stage);
+    return `<span class="lock">Stores ${STAGE_NAME[next.stage]} items: ${newOnes.map((m) => icon(m, 14)).join(' ')} up to ${STAGE_CAP[next.stage]} each</span>`;
   },
   pay: (m) => { shed.paid[m] = (shed.paid[m] || 0) + 1; },
   complete: () => {
     shed.paid = {}; shed.level++; refreshShed(); sfx.build();
-    toast(shed.level === 0 ? 'Shed repaired! Stand on its yellow pad to store things.' : `Shed upgraded: holds ${shedCap()}`, true);
+    toast(shed.level === 0 ? 'Shed repaired! Stand on its yellow pad to store things (50 of each).' : `Shed upgraded: now stores ${STAGE_NAME[shedStage()]} items (${STAGE_CAP[shedStage()]} of each)`, true);
   },
 });
 refreshShed();
@@ -826,12 +869,12 @@ const shedCount = () => Object.values(shed.store).reduce((a, b) => a + b, 0);
 const shedEl = document.getElementById('shed');
 function shedNear() { return shed.level >= 0 && Math.hypot(P.shed.x - player.x, P.shed.z + 2.4 - player.z) < 1.5; }
 function renderShed() {
-  let html = `<div class="shead">Shed<span>${shedCount()}/${shedCap()}</span></div>`;
+  let html = `<div class="shead">Shed<span>LVL ${shed.level + 1}</span></div>`;
   for (const m of [...P.materials, ...P.refined]) {
     const b = bag[m] || 0, st = shed.store[m] || 0;
     if (!b && !st) continue;
     const ok = shedHolds(m) || st > 0;
-    html += `<button class="srow${ok ? '' : ' no'}" data-m="${m}" aria-label="${MATERIALS[m].name}">${icon(m, 24)}<span><b>${b}</b><i>${ok ? st : 'upgrade'}</i></span></button>`;
+    html += `<button class="srow${ok ? '' : ' no'}${ok && st >= capOf(m) ? ' full' : ''}" data-m="${m}" aria-label="${MATERIALS[m].name}">${icon(m, 24)}<span><b>${b}</b><i>${ok ? `${st}/${capOf(m)}` : 'upgrade'}</i></span></button>`;
   }
   html += '<div class="shint">bag · shed<br>tap to store all or take back</div>';
   shedEl.innerHTML = html;
@@ -842,8 +885,8 @@ shedEl.addEventListener('click', (e) => {
   const m = btn.dataset.m;
   if ((bag[m] || 0) > 0) {
     if (!shedHolds(m)) { toast(`Upgrade the shed to store ${MATERIALS[m].name.toLowerCase()}`); sfx.warn(); return; }
-    const n = Math.min(bag[m], shedCap() - shedCount());
-    if (n <= 0) { toast('The shed is full'); sfx.warn(); return; }
+    const n = Math.min(bag[m], shedRoom(m));
+    if (n <= 0) { toast(`The shed is full of ${MATERIALS[m].name.toLowerCase()} (${capOf(m)})`); sfx.warn(); return; }
     bag[m] -= n; shed.store[m] = (shed.store[m] || 0) + n;
     sfx.pay(); toast(`Stored ${n} ${MATERIALS[m].name.toLowerCase()}`);
   } else {
@@ -1182,8 +1225,11 @@ const CREW_SPEED = 4.2, CARRY = 5;
 function assignJob(a, order) {
   a.name = CREW_NAMES[a.i % CREW_NAMES.length];
   a.job = JOBS[order % JOBS.length]; a.jobIdx = order;
-  a.task = 'find'; a.carry = 0; a.t = 0; a.target = null;
-  a.el.innerHTML = a.job.type === 'gather' ? `${a.name} ${icon(a.job.mat, 14)}` : `${a.name} · explorer`;
+  a.task = 'find'; a.carry = 0; a.t = 0; a.target = null; a.exploring = a.job.type === 'explore';
+  crewLabel(a);
+}
+function crewLabel(a) {
+  a.el.innerHTML = a.job.type === 'gather' && !a.exploring ? `${a.name} ${icon(a.job.mat, 14)}` : `${a.name} · ${a.job.type === 'gather' ? 'exploring' : 'explorer'}`;
 }
 function jobText(a) { return a.job.type === 'gather' ? `They'll gather ${MATERIALS[a.job.mat].name.toLowerCase()} for the shed` : 'They\'ll explore and bring back surprises'; }
 function riverZAt(x) {
@@ -1203,8 +1249,7 @@ function walkTo(a, tx, tz, dt) {
   return false;
 }
 function shedPut(m, n) {
-  if (!shedHolds(m)) return 0;
-  const k = Math.min(n, shedCap() - shedCount());
+  const k = Math.min(n, shedRoom(m));
   if (k > 0) { shed.store[m] = (shed.store[m] || 0) + k; if (shed.open) renderShed(); }
   return k;
 }
@@ -1215,8 +1260,11 @@ function crewWork(a, dt, t) {
     // nothing to do until the shed is repaired: wait near it
     if (!a.idleSpot) a.idleSpot = { x: P.shed.x - 3 + a.i * 1.2, z: P.shed.z + 4.5 };
     walkTo(a, a.idleSpot.x, a.idleSpot.z, dt);
-  } else if (a.job.type === 'gather') {
-    if (a.task === 'find') {
+  } else if (a.job.type === 'gather' && !a.exploring) {
+    if (a.task === 'find' && shedFull(a.job.mat)) {
+      // the shed has all it can hold of this: go exploring until there's room again
+      a.exploring = true; a.task = 'find'; crewLabel(a);
+    } else if (a.task === 'find') {
       let best = null, bd = Infinity;
       for (const n of nodes) {
         if (n.mat !== a.job.mat || n.hp <= 0 || (n.claim && n.claim !== a) || aliveAt(n.x, n.z) < 0.6 || !sameSide(n.x, n.z)) continue;
@@ -1249,9 +1297,8 @@ function crewWork(a, dt, t) {
         a.task = a.carry > 0 ? 'full' : 'find';
       }
     } else if (a.task === 'full') {
-      // the shed is full: wait by it until there's room
-      a.t += dt;
-      if (a.t > 2) { a.t = 0; const put = shedPut(a.job.mat, a.carry); a.carry -= put; if (!a.carry) a.task = 'find'; }
+      // the shed filled up while they were out: leave the extra and go exploring
+      a.carry = 0; a.exploring = true; a.task = 'find'; crewLabel(a);
     }
   } else {
     // explorer
@@ -1271,11 +1318,16 @@ function crewWork(a, dt, t) {
       if (a.t > 4) { a.task = 'return'; a.dest = shedPad(); }
     } else if (a.task === 'return') {
       if (walkTo(a, a.dest.x, a.dest.z, dt)) {
+        // finds: a little raw material the shed still has room for, sometimes a refined item,
+        // rarely a manufactured one (a little more often when the raw shelves are full)
         const found = {};
-        const picks = [...P.materials].sort(() => Math.random() - 0.5).slice(0, 2);
+        const roomy = P.materials.filter((m) => !shedFull(m));
+        const picks = roomy.sort(() => Math.random() - 0.5).slice(0, 2);
         for (const m of picks) found[m] = 2 + Math.floor(Math.random() * 3);
-        if (Math.random() < 0.3) found[Math.random() < 0.5 ? 'polishedCrystal' : 'goldBar'] = 1;
-        if (Math.random() < 0.06) found.powerCore = 1;
+        const rawFull = roomy.length === 0;
+        const refinedIds = P.refined.filter((m) => MATERIALS[m].stage === 1), madeIds = P.refined.filter((m) => MATERIALS[m].stage === 2);
+        if (refinedIds.length && Math.random() < (rawFull ? 0.45 : 0.3)) found[refinedIds[Math.floor(Math.random() * refinedIds.length)]] = 1;
+        if (madeIds.length && Math.random() < (rawFull ? 0.09 : 0.05)) found[madeIds[0]] = 1;
         const kept = [];
         for (const [m, n] of Object.entries(found)) { const k = shedPut(m, n); if (k) kept.push(`${k} ${MATERIALS[m].name.toLowerCase()}`); }
         if (kept.length && Math.hypot(a.x - player.x, a.z - player.z) < 40) toast(`${a.name} brought back ${kept.join(', ')}`);
@@ -1283,7 +1335,11 @@ function crewWork(a, dt, t) {
       }
     } else if (a.task === 'rest') {
       a.t += dt;
-      if (a.t > 6) a.task = 'find';
+      if (a.t > 6) {
+        a.task = 'find';
+        // a gatherer goes back to work once the shed has room for their material again
+        if (a.job.type === 'gather' && !shedFull(a.job.mat)) { a.exploring = false; crewLabel(a); }
+      }
     }
   }
   // look busy
@@ -1349,7 +1405,7 @@ function project(x, y, z) { v3.set(x, y, z).project(camera); return [(v3.x * 0.5
 function updateOverlays() {
   for (const s of sites) {
     const d = Math.hypot(s.x - player.x, s.z - player.z);
-    const show = d < 24 && !(s.hideWhenDone && !s.cost()) && !(s.hidden && s.hidden());
+    const show = d < 24 && !boarding && !rocket.launching && !(s.hideWhenDone && !s.cost()) && !(s.hidden && s.hidden());
     s.el.classList.toggle('gone', !show);
     s.el.classList.toggle('near', !!s.near);
     if (!show) continue;
@@ -1368,6 +1424,100 @@ function updateOverlays() {
   if (open && !shed.open) renderShed();
   shed.open = open;
   shedEl.classList.toggle('gone', !open);
+}
+
+
+// ------------------------------------------------------------------ the planet map (discovery)
+// A grid of 2x2 squares over the planet. Squares near you (and near exploring crew) become
+// discovered; the map only shows discovered squares and what's on them, live.
+const CELL = 2, GN = Math.ceil((P.radius * 2) / CELL) + 2, GOFF = GN / 2;
+const seen = new Uint8Array(GN * GN);
+let seenCount = 0, mapDirty = true;
+const cellOf = (x, z) => [Math.floor(x / CELL + GOFF), Math.floor(z / CELL + GOFF)];
+const inPlanetCell = (i, j) => Math.hypot((i + 0.5 - GOFF) * CELL, (j + 0.5 - GOFF) * CELL) < P.radius;
+let planetCells = 0;
+for (let i = 0; i < GN; i++) for (let j = 0; j < GN; j++) if (inPlanetCell(i, j)) planetCells++;
+function reveal(x, z, rad) {
+  const [ci, cj] = cellOf(x, z), rc = Math.ceil(rad / CELL);
+  for (let i = ci - rc; i <= ci + rc; i++) for (let j = cj - rc; j <= cj + rc; j++) {
+    if (i < 0 || j < 0 || i >= GN || j >= GN) continue;
+    const k = i * GN + j;
+    if (seen[k] || !inPlanetCell(i, j)) continue;
+    if (Math.hypot((i + 0.5 - GOFF) * CELL - x, (j + 0.5 - GOFF) * CELL - z) > rad) continue;
+    seen[k] = 1; seenCount++; mapDirty = true;
+  }
+}
+const isSeen = (x, z) => { const [i, j] = cellOf(x, z); return i >= 0 && j >= 0 && i < GN && j < GN && seen[i * GN + j] === 1; };
+const explored = () => Math.min(100, Math.floor((seenCount / planetCells) * 100));
+const REVEAL_YOU = 17, REVEAL_CREW = 10, REVEAL_HOME = 24;
+let lastRevealX = 1e9, lastRevealZ = 1e9;
+function updateDiscovery() {
+  if (Math.hypot(player.x - lastRevealX, player.z - lastRevealZ) > 1) { reveal(player.x, player.z, REVEAL_YOU); lastRevealX = player.x; lastRevealZ = player.z; }
+  // explorers chart the planet with their suits as they go
+  for (const a of lost) if (a.state === 'rescued' && a.exploring && (a.task === 'out' || a.task === 'search' || a.task === 'return')) {
+    if (Math.hypot(a.x - (a.rvx ?? 1e9), a.z - (a.rvz ?? 1e9)) > 1.5) { reveal(a.x, a.z, REVEAL_CREW); a.rvx = a.x; a.rvz = a.z; }
+  }
+}
+// pack / unpack for the save
+function packSeen() { let out = ''; for (let k = 0; k < seen.length; k += 6) { let v = 0; for (let b = 0; b < 6; b++) v |= (seen[k + b] || 0) << b; out += String.fromCharCode(48 + v); } return out; }
+function unpackSeen(str) { seenCount = 0; for (let c = 0; c < str.length; c++) { const v = str.charCodeAt(c) - 48; for (let b = 0; b < 6; b++) { const k = c * 6 + b; if (k < seen.length) { seen[k] = (v >> b) & 1; seenCount += seen[k]; } } } mapDirty = true; }
+
+const mapEl = document.getElementById('map');
+const mapCv = document.getElementById('mapcv');
+let paused = false;
+function openMap() { if (!playing) return; paused = true; drawMap(); mapEl.classList.remove('gone'); sfx.pop(); }
+function closeMap() { paused = false; mapEl.classList.add('gone'); }
+document.getElementById('mapbtn').addEventListener('click', () => (paused ? closeMap() : openMap()));
+mapEl.addEventListener('click', (e) => { if (e.target === mapEl || e.target.closest('#mapclose')) closeMap(); });
+function drawMap() {
+  const box = Math.min(innerWidth - 32, innerHeight - 220, 520);
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  mapCv.width = mapCv.height = Math.round(box * dpr);
+  mapCv.style.width = mapCv.style.height = box + 'px';
+  const g = mapCv.getContext('2d');
+  const S = (box * dpr) / (P.radius * 2 + 6), C0 = (box * dpr) / 2;
+  const px = (x) => C0 + x * S, pz = (z) => C0 + z * S;
+  g.clearRect(0, 0, mapCv.width, mapCv.height);
+  // the planet: unknown space is a dark disc
+  g.fillStyle = 'rgba(13,24,52,.55)'; g.beginPath(); g.arc(C0, C0, P.radius * S, 0, Math.PI * 2); g.fill();
+  // discovered ground: green where alive, grey where dead; the river as water or lava
+  const cs = CELL * S + 0.6;
+  for (let i = 0; i < GN; i++) for (let j = 0; j < GN; j++) {
+    if (!seen[i * GN + j]) continue;
+    const x = (i + 0.5 - GOFF) * CELL, z = (j + 0.5 - GOFF) * CELL;
+    const alive = aliveAt(x, z) > 0.5;
+    const ri = riverInfo(x, z);
+    g.fillStyle = ri.d < river.width / 2 ? (alive ? '#4fb4ea' : '#e0703c') : alive ? '#6fcf5a' : '#8d8f98';
+    g.fillRect(px(x - CELL / 2), pz(z - CELL / 2), cs, cs);
+  }
+  g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 2 * dpr; g.beginPath(); g.arc(C0, C0, P.radius * S, 0, Math.PI * 2); g.stroke();
+  // markers: circle = bubble generator, square = machine, bar = bridge, triangle = rocket.
+  // Red until it's MAX (or fixed), green once it is.
+  const R = 5.5 * dpr;
+  const col = (done) => (done ? '#2fd06a' : '#ff4d5e');
+  const mark = (x, z, shape, done, ang = 0) => {
+    if (!isSeen(x, z)) return;
+    g.save(); g.translate(px(x), pz(z)); g.rotate(ang);
+    g.fillStyle = col(done); g.strokeStyle = '#fff'; g.lineWidth = 1.6 * dpr;
+    g.beginPath();
+    if (shape === 'circle') g.arc(0, 0, R, 0, Math.PI * 2);
+    else if (shape === 'square') g.rect(-R, -R, R * 2, R * 2);
+    else if (shape === 'bar') g.rect(-R * 0.55, -R * 1.5, R * 1.1, R * 3);
+    else { g.moveTo(0, -R * 1.3); g.lineTo(R * 1.15, R); g.lineTo(-R * 1.15, R); g.closePath(); }
+    g.fill(); g.stroke(); g.restore();
+  };
+  for (const gn of gens) mark(gn.x, gn.z, 'circle', gn.level >= gn.radii.length - 1);
+  for (const rf of refiners) mark(rf.x, rf.z, 'square', rf.repaired && rfMax(rf));
+  for (const ex of extractors) mark(ex.x, ex.z, 'square', ex.level >= ex.levels.length - 1);
+  mark(P.shed.x, P.shed.z, 'square', shed.level >= P.shed.levels.length - 1);
+  mark(P.workbench.x, P.workbench.z, 'square', Object.keys(UPGRADES).every((k) => !UPGRADES[k].costs[tools[k]]));
+  for (const br of bridges) mark(br.def.at[0], br.def.at[1], 'bar', br.repaired, Math.atan2(br.tz, br.tx));
+  mark(P.rocket.x, P.rocket.z, 'tri', rocket.done);
+  // you: a blue dot
+  g.fillStyle = '#3d8bff'; g.strokeStyle = '#fff'; g.lineWidth = 2.5 * dpr;
+  g.beginPath(); g.arc(px(player.x), pz(player.z), 6.5 * dpr, 0, Math.PI * 2); g.fill(); g.stroke();
+  document.getElementById('mapstats').innerHTML = `<span>Explored <b>${explored()}%</b></span><span>Alive <b>${badge ? 100 : pctAlive()}%</b></span>`;
+  mapDirty = false;
 }
 
 // ------------------------------------------------------------------ camera
@@ -1403,10 +1553,10 @@ function save() {
     gens: gens.map((g) => ({ level: g.level, paid: g.paid })),
     ex: extractors.map((e) => ({ level: e.level, stored: e.stored, paid: e.paid })),
     bridges: bridges.map((b) => ({ repaired: b.repaired, paid: b.paid })),
-    refiners: refiners.map((r) => ({ repaired: r.repaired, paid: r.paid, loaded: r.loaded, out: r.out, t: r.t })),
+    refiners: refiners.map((r) => ({ repaired: r.repaired, paid: r.paid, loaded: r.loaded, out: r.out, t: r.t, level: r.level, upPaid: r.upPaid })),
     rocket: { paid: rocket.paid, done: rocket.done, launched: rocket.launched },
     lost: lost.map((a) => ({ state: a.state === 'following' ? 'waiting' : a.state, jobIdx: a.jobIdx, x: a.x, z: a.z })),
-    shed: { level: shed.level, paid: shed.paid, store: shed.store }, toolPaid,
+    shed: { level: shed.level, paid: shed.paid, store: shed.store }, toolPaid, seen: packSeen(),
   };
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(d)); } catch (e) {}
 }
@@ -1420,10 +1570,11 @@ function load() {
   d.gens.forEach((s, i) => { if (gens[i]) { gens[i].level = s.level; gens[i].paid = s.paid || {}; gens[i].rShown = s.level >= 0 ? gens[i].radii[s.level] : 0; refreshGen(gens[i]); } });
   d.ex.forEach((s, i) => { if (extractors[i]) { Object.assign(extractors[i], { level: s.level, stored: s.stored, paid: s.paid || {} }); refreshEx(extractors[i]); } });
   (d.bridges || []).forEach((s, i) => { const b = bridges[i]; if (b) { b.repaired = s.repaired; b.paid = s.paid || {}; refreshBridge(b); } });
-  (d.refiners || []).forEach((s, i) => { const r = refiners[i]; if (r) { Object.assign(r, { repaired: s.repaired, paid: s.paid || {}, loaded: s.loaded || {}, out: s.out || 0, t: s.t || 0 }); refreshRefiner(r); } });
+  (d.refiners || []).forEach((s, i) => { const r = refiners[i]; if (r) { Object.assign(r, { repaired: s.repaired, paid: s.paid || {}, loaded: s.loaded || {}, out: s.out || 0, t: s.t || 0, level: s.level || 0, upPaid: s.upPaid || {} }); refreshRefiner(r); } });
   rocket.paid = d.rocket.paid || {}; rocket.done = d.rocket.done; rocket.launched = !!d.rocket.launched;
   if (d.shed) { shed.level = d.shed.level; shed.paid = d.shed.paid || {}; Object.assign(shed.store, d.shed.store || {}); refreshShed(); }
   if (d.toolPaid) Object.assign(toolPaid, d.toolPaid);
+  if (d.seen) unpackSeen(d.seen);
   d.lost.forEach((s, i) => {
     const a = lost[i]; if (!a) return;
     if (s.state === 'rescued') { a.state = 'rescued'; a.dome.visible = false; a.home = homeSpot(a.i); a.x = s.x ?? a.home.x; a.z = s.z ?? a.home.z; assignJob(a, s.jobIdx || 0); }
@@ -1432,6 +1583,63 @@ function load() {
 }
 addEventListener('visibilitychange', () => { if (document.hidden && playing) save(); });
 addEventListener('pagehide', () => { if (playing) save(); });
+
+// ------------------------------------------------------------------ boarding: a 10-second countdown while
+// you and the crew walk to the rocket and climb in through a hatch on its far side
+let boarding = null;
+const countEl = document.getElementById('countdown');
+function startBoarding() {
+  if (boarding || rocket.launching) return;
+  playing = false; closeMap(); player.moving = false; player.floating = false; drag = null;
+  launchEl.classList.add('gone');
+  const R = P.rocket, walkers = [];
+  const hatch = { x: R.x, z: R.z - 1.7 };     // behind the rocket, out of sight
+  const pathFrom = (x, z) => { const side = x >= R.x ? 1 : -1; return [{ x: R.x + side * 3.0, z: R.z - 0.2 }, { x: R.x + side * 1.2, z: R.z - 1.6 }, hatch]; };
+  let i = 0;
+  for (const a of lost) {
+    if (a.state !== 'rescued' && a.state !== 'following') continue;
+    // far-away crew come in from just off screen
+    const dx = a.x - R.x, dz = a.z - R.z, d = Math.hypot(dx, dz);
+    if (d > 15) { a.x = R.x + (dx / d) * 15; a.z = R.z + (dz / d) * 15; }
+    a.el.classList.add('gone');
+    walkers.push({ who: a, delay: 0.3 + i * 0.55, path: pathFrom(a.x, a.z), step: 0, inside: false });
+    i++;
+  }
+  walkers.push({ who: 'player', delay: Math.max(2.5, 0.3 + i * 0.55 + 0.6), path: pathFrom(player.x, player.z), step: 0, inside: false });
+  boarding = { t: 0, shown: 11, walkers };
+  sfx.level();
+}
+function updateBoarding(dt, t) {
+  const b = boarding;
+  b.t += dt;
+  const n = Math.max(1, 10 - Math.floor(b.t));
+  if (n !== b.shown && b.t < 10) { b.shown = n; countEl.textContent = n; countEl.classList.remove('gone', 'tick'); void countEl.offsetWidth; countEl.classList.add('tick'); sfx.pop(); }
+  const [cx, cy] = project(P.rocket.x, 8.2, P.rocket.z);
+  countEl.style.left = cx + 'px'; countEl.style.top = cy + 'px'; countEl.style.transform = 'translate(-50%, -100%)';
+  for (const w of b.walkers) {
+    if (w.inside || b.t < w.delay) continue;
+    const isP = w.who === 'player';
+    const o = isP ? player : w.who;
+    const tgt = w.path[w.step];
+    const dx = tgt.x - o.x, dz = tgt.z - o.z, d = Math.hypot(dx, dz);
+    const sp = Math.min(d, (isP ? 5.5 : 5.2) * dt);
+    if (d > 0.05) { o.x += (dx / d) * sp; o.z += (dz / d) * sp; }
+    if (d < 0.15) { w.step++; if (w.step >= w.path.length) { w.inside = true; (isP ? player.model : w.who.m).visible = false; sfx.pay(); continue; } }
+    if (isP) { player.face = Math.atan2(dx, dz); player.moving = true; player.walk += dt * 10; player.gathering = false; }
+    else {
+      const a = w.who, u = a.m.userData;
+      a.m.rotation.y = Math.atan2(dx, dz);
+      a.m.position.set(a.x, Math.abs(Math.sin(t * 9 + a.i)) * 0.08, a.z);
+      u.legL.rotation.x = Math.sin(t * 10 + a.i) * 0.6; u.legR.rotation.x = -u.legL.rotation.x; u.arm.rotation.x = 0;
+    }
+  }
+  if (b.t >= 10) {
+    for (const w of b.walkers) { (w.who === 'player' ? player.model : w.who.m).visible = false; }
+    countEl.classList.add('gone');
+    boarding = null;
+    launch();
+  }
+}
 
 // ------------------------------------------------------------------ launch (end of the planet)
 function launch() {
@@ -1453,7 +1661,7 @@ function launch() {
   }, 3200);
 }
 const launchEl = document.getElementById('launch');
-launchEl.addEventListener('click', () => { if (rocket.done && playing) launch(); });
+launchEl.addEventListener('click', () => { if (rocket.done && playing) startBoarding(); });
 function updateLaunchButton() {
   const near = rocket.done && playing && !rocket.launching && Math.hypot(P.rocket.x - player.x, P.rocket.z - player.z) < 4.2;
   launchEl.classList.toggle('gone', !near);
@@ -1485,7 +1693,14 @@ function begin() {
 }
 document.getElementById('go').addEventListener('click', begin);
 document.getElementById('fresh').addEventListener('click', () => { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} location.reload(); });
-document.getElementById('again').addEventListener('click', () => { document.getElementById('win').classList.add('gone'); playing = true; rocket.model.position.y = 0; rocket.model.userData.flame.visible = false; rocket.launching = 0; toast('Welcome back. The rocket is ready whenever you are.'); });
+document.getElementById('again').addEventListener('click', () => {
+  document.getElementById('win').classList.add('gone'); playing = true; rocket.model.position.y = 0; rocket.model.userData.flame.visible = false; rocket.launching = 0;
+  // everyone climbs back out
+  player.x = P.rocket.x; player.z = P.rocket.z + 3.4; player.model.visible = true;
+  lost.forEach((a, i) => { if (a.state === 'rescued' || a.state === 'following') { a.m.visible = true; a.x = P.rocket.x - 4 + (i % 4) * 2.2; a.z = P.rocket.z + 5 + Math.floor(i / 4) * 1.8; } });
+  updateCamera(0, true);
+  toast('Welcome back. The rocket is ready whenever you are.');
+});
 const muteBtn = document.getElementById('mute');
 muteBtn.classList.toggle('off', sfx.muted);
 muteBtn.addEventListener('click', () => { sfx.init(); sfx.toggle(); muteBtn.classList.toggle('off', sfx.muted); });
@@ -1495,6 +1710,7 @@ function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.asp
 addEventListener('resize', resize);
 resize();
 load();
+reveal(P.start.x, P.start.z, REVEAL_HOME);
 syncBubbleUniforms(); updateDeco(); restore = computeRestore(); refreshRocket();
 updateCamera(0, true);
 let last = performance.now(), saveT = 0;
@@ -1511,7 +1727,7 @@ function frame(now) {
       else { renderer.shadowMap.enabled = false; scene.traverse((o) => o.material && (o.material.needsUpdate = true)); } } }
     else slow = 0;
   }
-  update(dt);
+  if (!paused) update(dt);
   renderer.render(scene, camera);
   updateOverlays();
   requestAnimationFrame(frame);
@@ -1530,12 +1746,14 @@ function update(dt) {
     checkBadge();
     updateAir(dt);
     updateLost(dt, t);
+    updateDiscovery();
     saveT += dt; if (saveT > 5) { saveT = 0; save(); }
   }
   updateNodes(dt);
   updateFlyers(dt);
   updateBubbles(dt);
   refreshRocket();
+  if (boarding) updateBoarding(dt, t);
   if (rocket.launching) {
     rocket.launching += dt;
     const lt = rocket.launching;
@@ -1549,6 +1767,6 @@ function update(dt) {
 requestAnimationFrame(frame);
 
 // hooks for automated playtesting
-window.__bloom = { step: (n) => { for (let i = 0; i < n; i++) update(1 / 30); }, player, bag, tools, gens, nodes, sites, extractors, bridges, refiners, rocket, lost, launch, shed, get restore() { return restore; }, begin, give: (m, n) => { bag[m] = (bag[m] || 0) + n; hudDirty = true; } };
+window.__bloom = { step: (n) => { for (let i = 0; i < n; i++) update(1 / 30); }, player, bag, tools, gens, nodes, sites, extractors, bridges, refiners, rocket, lost, launch, startBoarding, get boarding() { return boarding; }, shed, openMap, closeMap, get explored() { return explored(); }, reveal, get restore() { return restore; }, begin, give: (m, n) => { bag[m] = (bag[m] || 0) + n; hudDirty = true; } };
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});

@@ -167,3 +167,37 @@ PHASE 3.1 — percent fix
   while the launch screen rounded down and said 99%. Now every screen uses
   the same number, it never rounds up to 100, and the badge needs a true
   100% (every bubble maxed — checked: all 21 maxed = exactly 100%).
+
+PHASE 4 — storage limits, tiers, crystal bridge, upgrades, map, boarding
+- Storage: every item has its own limit in the shed: raw 50 each, refined 25
+  each (polished crystal, gold bars), manufactured 10 each (power cores).
+  Shed levels now unlock stages instead of total space: LVL 1 raw, LVL 2 adds
+  refined, LVL 3 adds manufactured. A 4th stage (5 each) is reserved for a
+  second manufacturing step on later planets.
+- Crew: a gatherer whose material is full in the shed goes exploring
+  (label shows "exploring") and returns to gathering once there's room.
+  Explorer finds only include raw items the shed has room for; refined
+  finds ~30% (45% when all raw shelves are full), manufactured ~5% (9%).
+- Bridges: the first is wood and stone. The second is now a glowing crystal
+  bridge built from 36 red crystal only. Planet generator will pick the
+  second bridge's material (crystal or gold) at random on later planets.
+- Bubble generators all follow one pattern: LVL 1 (build) raw, LVL 2 more
+  raw, LVL 3 refined (polished crystal + gold bars), LVL 4 MAX power cores.
+  Counts grow with distance from home: 1+1 refined and 1 core near home,
+  up to 2+2 refined and 2 cores at the far edge. All 21 maxed = 56 refined
+  + 25 power cores.
+- Refinery upgrades: a sign in front of each machine. LVL 2 and LVL 3 (MAX)
+  work faster (0.7x, then 0.5x the time) and hold 1.5x / 2x the loads and
+  tray. The cap turns gold at MAX.
+- Map: round button top-left (planet with the river). Opening it pauses
+  everything and blurs the world. Only discovered ground shows: green alive,
+  grey dead, river blue (water) or orange (lava). Markers, red until MAX or
+  fixed, green when done: circle bubble, square machine (refineries,
+  extractors, shed, workbench), bar bridge, triangle rocket. Blue dot is you.
+  Lost astronauts never show. "Explored %" and "Alive %" underneath.
+  Discovery: about a screen's worth around you as you walk, a circle of 24
+  around the start is known from the beginning, and explorers chart the map
+  as they wander. Saved with the game.
+- Launch: a 10-second countdown above the rocket. Your crew walk in (far
+  ones appear from just off screen) and disappear behind the rocket through
+  a hatch you never see; you board last. Liftoff at zero.

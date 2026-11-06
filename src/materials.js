@@ -1,22 +1,28 @@
 // Master list of materials. Each planet uses 3-6 of these; the list grows over time.
 // skill: which skill gathering it trains. tier: tool level needed to gather it.
+// stage: 0 raw (gathered), 1 refined (made from raw), 2 manufactured (made from refined),
+// 3 kept free for a second manufacturing step on later planets. Storage per item depends on it.
 // shape: how the node looks in the world and the icon in the HUD.
 export const MATERIALS = {
-  wood:       { name: 'Wood',        color: '#b07a45', dark: '#7d5230', skill: 'chop', tier: 1, shape: 'log',     node: 'tree',    perNode: 4 },
-  stone:      { name: 'Stone',       color: '#a7adb8', dark: '#7c828d', skill: 'mine', tier: 1, shape: 'chunk',   node: 'boulder', perNode: 4 },
-  redCrystal: { name: 'Red crystal', color: '#ef4b5f', dark: '#b8283c', skill: 'mine', tier: 1, shape: 'crystal', node: 'crystal', perNode: 5 },
-  gold:       { name: 'Gold',        color: '#f5c542', dark: '#c99a1c', skill: 'mine', tier: 2, shape: 'nugget',  node: 'ore',     perNode: 3 },
+  wood:       { name: 'Wood',        color: '#b07a45', dark: '#7d5230', skill: 'chop', tier: 1, shape: 'log',     node: 'tree',    perNode: 4, stage: 0 },
+  stone:      { name: 'Stone',       color: '#a7adb8', dark: '#7c828d', skill: 'mine', tier: 1, shape: 'chunk',   node: 'boulder', perNode: 4, stage: 0 },
+  redCrystal: { name: 'Red crystal', color: '#ef4b5f', dark: '#b8283c', skill: 'mine', tier: 1, shape: 'crystal', node: 'crystal', perNode: 5, stage: 0 },
+  gold:       { name: 'Gold',        color: '#f5c542', dark: '#c99a1c', skill: 'mine', tier: 2, shape: 'nugget',  node: 'ore',     perNode: 3, stage: 0 },
   // refined items, made in machines
-  polishedCrystal: { name: 'Polished crystal', color: '#ff7aa8', dark: '#d94a7c', shape: 'cube', refined: true },
-  goldBar:         { name: 'Gold bar',         color: '#ffd65a', dark: '#d9a520', shape: 'bar',  refined: true },
-  powerCore:       { name: 'Power core',       color: '#5ff2ff', dark: '#1aa7c4', shape: 'core', refined: true },
+  polishedCrystal: { name: 'Polished crystal', color: '#ff7aa8', dark: '#d94a7c', shape: 'cube', refined: true, stage: 1 },
+  goldBar:         { name: 'Gold bar',         color: '#ffd65a', dark: '#d9a520', shape: 'bar',  refined: true, stage: 1 },
+  powerCore:       { name: 'Power core',       color: '#5ff2ff', dark: '#1aa7c4', shape: 'core', refined: true, stage: 2 },
   // ready for later planets
-  blueCrystal: { name: 'Blue crystal', color: '#4fa8ff', dark: '#2a6fcc', skill: 'mine', tier: 3, shape: 'crystal', node: 'crystal', perNode: 5 },
-  ice:         { name: 'Ice',          color: '#bfeaff', dark: '#86c6e6', skill: 'mine', tier: 2, shape: 'chunk',   node: 'boulder', perNode: 4 },
-  mushroom:    { name: 'Glow cap',     color: '#b48ef0', dark: '#7d5cc4', skill: 'chop', tier: 2, shape: 'cap',     node: 'shroom',  perNode: 3 },
+  blueCrystal: { name: 'Blue crystal', color: '#4fa8ff', dark: '#2a6fcc', skill: 'mine', tier: 3, shape: 'crystal', node: 'crystal', perNode: 5, stage: 0 },
+  ice:         { name: 'Ice',          color: '#bfeaff', dark: '#86c6e6', skill: 'mine', tier: 2, shape: 'chunk',   node: 'boulder', perNode: 4, stage: 0 },
+  mushroom:    { name: 'Glow cap',     color: '#b48ef0', dark: '#7d5cc4', skill: 'chop', tier: 2, shape: 'cap',     node: 'shroom',  perNode: 3, stage: 0 },
 };
 
 // tiny inline SVG icons for the HUD and cost signs
+// how many of one item the shed can hold, by stage
+export const STAGE_CAP = [50, 25, 10, 5];
+export const STAGE_NAME = ['raw', 'refined', 'manufactured', 'advanced'];
+
 export function icon(id, size = 18) {
   const m = MATERIALS[id];
   const c = m.color, d = m.dark;

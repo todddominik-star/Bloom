@@ -2,15 +2,16 @@
 // Planet 1 is laid out by hand here; later planets will come from a generator that
 // produces the same shape of description from a seed.
 
-// ---- costs are worked out from a "tier" (how far from home), so a generator can reuse them
+// ---- costs are worked out from a "tier" (how far from home), so a generator can reuse them.
+// Every bubble follows the same pattern: LVL 1 (build) raw, LVL 2 more raw, LVL 3 refined items,
+// LVL 4 (MAX) manufactured items. Counts stay small near home and grow farther out.
 const GEN_MATS = [['wood', 'stone'], ['stone', 'redCrystal'], ['redCrystal', 'gold'], ['gold', 'redCrystal']];
-// cost to build (step 0) or to reach level `step` of a bubble generator
-export function genCost(tier, step, maxStep) {
+export function genCost(tier, step) {
   const [a, b] = GEN_MATS[tier];
-  const c = { [a]: 8 + 4 * step + 3 * tier, [b]: 5 + 3 * step + 2 * tier };
-  // the final, biggest bubble needs refined crystal: you can't reach 100% on raw materials alone
-  if (step === maxStep && tier > 0) c.polishedCrystal = 1 + tier;
-  return c;
+  if (step === 0) return { [a]: 8 + 3 * tier, [b]: 5 + 2 * tier };
+  if (step === 1) return { [a]: 14 + 4 * tier, [b]: 9 + 3 * tier };
+  if (step === 2) return { polishedCrystal: tier < 2 ? 1 : 2, goldBar: tier < 3 ? 1 : 2 };
+  return { powerCore: tier < 3 ? 1 : 2 };
 }
 
 const HOME = { x: -24, z: 52 };
@@ -30,17 +31,19 @@ export const PLANET1 = {
   restoreGoal: 0.5,          // the rocket can launch from here
   // the river crosses the whole planet; lava outside a bubble, water inside
   river: { width: 7, points: [[-112, -6], [-69, 4.5], [-36, 13.5], [-12, 10.5], [12, 1.5], [39, -10.5], [69, -15], [112, -24]] },
+  // each bridge is built from one look: 'wood' (wood and stone), 'crystal' or 'gold'.
+  // The planet generator will pick the second bridge's material at random.
   bridges: [
-    { at: [-36, 13.5], cost: { wood: 24, stone: 12 } },
-    { at: [39, -10.5], cost: { wood: 20, redCrystal: 10 } },
+    { at: [-36, 13.5], kind: 'wood', cost: { wood: 24, stone: 12 } },
+    { at: [39, -10.5], kind: 'crystal', cost: { redCrystal: 36 } },
   ],
   generators: GEN_SPOTS.map(([x, z], i) => {
     const tier = Math.min(3, Math.floor(Math.hypot(x - HOME.x, z - HOME.z) / 40));
     const maxStep = RADII.length - 1;
     return {
       id: 'g' + i, x, z, built: i === 0, radii: RADII,
-      build: i === 0 ? null : genCost(tier, 0, maxStep),
-      costs: [1, 2, 3].map((s) => genCost(tier, s, maxStep)),
+      build: i === 0 ? null : genCost(tier, 0),
+      costs: [1, 2, 3].map((s) => genCost(tier, s)), tier,
     };
   }),
 
@@ -57,22 +60,27 @@ export const PLANET1 = {
       costs: [{ redCrystal: 16, gold: 8 }, { polishedCrystal: 4, gold: 10 }] },
   ],
 
-  // broken refining machines: repair, load two raw materials, wait, collect the refined item
+  // broken refining machines: repair, load the inputs, wait, collect the output.
+  // Upgrades (LVL 2, LVL 3 = MAX) make them work faster and hold bigger loads and trays.
   refiners: [
     { id: 'kiln', name: 'Kiln', x: -6, z: 64, repair: { stone: 20, wood: 12 },
-      inputs: { stone: 2, redCrystal: 2 }, output: 'polishedCrystal', secs: 6, hold: 10, store: 10 },
+      inputs: { stone: 2, redCrystal: 2 }, output: 'polishedCrystal', secs: 6, hold: 10, store: 10,
+      upgrades: [{ stone: 20, redCrystal: 14 }, { polishedCrystal: 4, goldBar: 3 }] },
     { id: 'smelter', name: 'Smelter', x: -52, z: 36, repair: { stone: 18, redCrystal: 12 },
-      inputs: { gold: 2, wood: 1 }, output: 'goldBar', secs: 7, hold: 10, store: 10 },
+      inputs: { gold: 2, wood: 1 }, output: 'goldBar', secs: 7, hold: 10, store: 10,
+      upgrades: [{ stone: 18, gold: 10 }, { goldBar: 4, polishedCrystal: 3 }] },
     { id: 'assembler', name: 'Assembler', x: 56, z: -52, repair: { stone: 20, polishedCrystal: 3, goldBar: 3 },
-      inputs: { polishedCrystal: 1, goldBar: 1 }, output: 'powerCore', secs: 10, hold: 6, store: 6 },
+      inputs: { polishedCrystal: 1, goldBar: 1 }, output: 'powerCore', secs: 10, hold: 6, store: 6,
+      upgrades: [{ polishedCrystal: 5, goldBar: 5 }, { powerCore: 2, gold: 14 }] },
   ],
 
   workbench: { x: -17, z: 56 },
-  // storage shed: starts broken; each level holds more, and higher levels take refined items
+  // storage shed: starts broken. Each level unlocks the next stage of items: raw (50 of each),
+  // then refined (25 each), then manufactured (10 each). Later planets can add a 4th level.
   shed: { x: -32, z: 46, levels: [
-    { cost: { wood: 16, stone: 10 }, cap: 100, holds: ['wood', 'stone', 'redCrystal', 'gold'] },
-    { cost: { wood: 20, redCrystal: 12 }, cap: 200, holds: ['wood', 'stone', 'redCrystal', 'gold', 'polishedCrystal', 'goldBar'] },
-    { cost: { gold: 12, polishedCrystal: 4 }, cap: 350, holds: ['wood', 'stone', 'redCrystal', 'gold', 'polishedCrystal', 'goldBar', 'powerCore'] },
+    { cost: { wood: 16, stone: 10 }, stage: 0 },
+    { cost: { wood: 20, redCrystal: 12 }, stage: 1 },
+    { cost: { gold: 12, polishedCrystal: 4 }, stage: 2 },
   ] },
   rocket: { x: -36, z: 64, cost: { stone: 30, polishedCrystal: 4, goldBar: 4, powerCore: 3 } },
 
