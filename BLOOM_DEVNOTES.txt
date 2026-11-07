@@ -208,3 +208,11 @@ PHASE 4.1 — shed tap fix
 - Now one tap stores if any of it can go in; if nothing can (shelf full, or
   the shed isn't upgraded for it), the tap takes some out instead, up to
   your backpack room, never more. The message says which happened.
+
+RELEASE NUMBERS AND COPYRIGHT
+- Every published version gets the next release number (one number, no
+  major/minor). It shows on the start screen with the build date, e.g.
+  "v12 · Nov 6, 2026". It lives at the top of build.mjs (const VERSION) and
+  also names the phone's offline cache, so a new number = a fresh download.
+- Start screen and page source carry: (c) 2026 Todd Dominik. All rights
+  reserved. Personal play only. The LICENSE file spells out "no reuse".

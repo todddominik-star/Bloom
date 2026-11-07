@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- Bloom © 2026 Todd Dominik. All rights reserved. Personal play only. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -107,6 +108,7 @@
   #countdown.tick { animation: tick .9s ease-out; }
   @keyframes tick { 0% { transform-origin: center; scale: 1.5; } 100% { scale: 1; } }
   @media (prefers-reduced-motion: reduce) { .help { animation: none; } #countdown.tick { animation: none; } }
+  .legal { margin-top: 18px; font-size: 11px; line-height: 1.5; opacity: .6; text-align: center; }
 </style>
 </head>
 <body>
@@ -144,6 +146,7 @@
   <p>Stranded on a dead little planet. Grow your bubble, bring the world back to life, and fix your rocket.</p>
   <button class="big" id="go">Start</button>
   <button class="link gone" id="fresh">Start over</button>
+  <div class="legal">© 2026 Todd Dominik. All rights reserved. Personal play only.<br>v7 · Nov 6, 2026</div>
 </div></div>
 <div class="screen gone" id="win"><div>
   <div class="orb"></div>
