@@ -93,6 +93,7 @@
   button:focus-visible { outline: 3px solid #ffd23f; outline-offset: 3px; }
   .lrow { display: flex; gap: 6px; align-items: center; }
   #mapbtn { pointer-events: auto; width: 34px; height: 34px; border-radius: 50%; }
+  .srow.done i { color: var(--good); opacity: 1; font-weight: 900; }
   .srow.full i { color: var(--good); font-weight: 900; opacity: 1; }
   #map { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(11,20,48,.45); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); transition: opacity .3s; z-index: 8; }
   .mapcard { display: grid; justify-items: center; gap: 8px; padding: 12px 14px 14px; border-radius: 22px; background: rgba(255,255,255,.12); color: #fff; }
@@ -143,7 +144,7 @@
 <div class="screen" id="start"><div>
   <div class="orb"></div>
   <h1>Bloom</h1>
-  <p>Stranded on a dead little planet. Grow your bubble, bring the world back to life, and fix your rocket.</p>
+  <p id="intro">Stranded on a dead little planet. Grow your bubble, bring the world back to life, and fix your rocket.</p>
   <button class="big" id="go">Start</button>
   <button class="link gone" id="fresh">Start over</button>
   <div class="legal">© 2026 Todd Dominik. All rights reserved. Personal play only.<br>__VERSION__</div>
@@ -154,7 +155,9 @@
   <div id="win-badge" class="badge gone">★</div>
   <p id="win-text"></p>
   <p id="win-stats" style="font-weight:800"></p>
-  <button class="big" id="again">Keep exploring</button>
+  <button class="big" id="next">Fly to the next planet</button>
+  <button class="link" id="again">Keep exploring</button>
+  <button class="link" id="restart">Start over</button>
 </div></div>
 <script>/*BUNDLE*/</script>
 </body>

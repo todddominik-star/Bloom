@@ -216,3 +216,44 @@ RELEASE NUMBERS AND COPYRIGHT
   also names the phone's offline cache, so a new number = a fresh download.
 - Start screen and page source carry: (c) 2026 Todd Dominik. All rights
   reserved. Personal play only. The LICENSE file spells out "no reuse".
+
+v8 — PLANET 2 AND BEYOND (the generator), EMBER REWORK
+Ember (stays the fixed first planet; older saves start fresh)
+- Two lost astronauts (one near home, one past the first bridge). They
+  gather wood and stone. No bag bonus for rescues any more.
+- Backpack is upgrades only, five sizes: 30, 45, 60, 80, 100.
+- Retired materials: when nothing left on the planet needs a raw material
+  (no sign, upgrade, rocket part, or machine whose product is still
+  needed), it retires: you stop picking it up, extractors stop handing it
+  out, its gatherer switches to a material still needed (or explores), and
+  the shed shows "recycle": tapping it clears it from bag and shelf.
+- Explorer finds are rarer: refined ~8% (12% when raw shelves are full),
+  power cores ~1% (2%). The machines are the real way to make things.
+- The boulder patch by the shed moved; nothing grows near the shed or its
+  pad any more.
+- Finish screen: Fly to the next planet / Keep exploring / Start over.
+Generated planets (planetgen.js)
+- Every planet after Ember is generated from a seed: name, look (teal,
+  dusk or sand: ground, plants, river colours), 4 raw materials from the
+  master list (wood, stone, red crystal, gold, blue crystal, ice, glow
+  caps), where home is, the river (moved, turned, bent, sometimes cutting
+  off only a smaller piece), ~20 bubbles that cover 100% when all maxed
+  (final size 32 instead of 30), two bridges (the far one crystal, blue
+  crystal or gold when the planet has it), extractors, kiln, smelter,
+  assembler, shed, workbench, rocket, rocks and resource patches. Costs are
+  Ember's with each material swapped for the planet's own, +25% per
+  planet; air drains a little faster each planet.
+- The hut, beside the rocket: repair it and upgrade it twice. The two lost
+  astronauts each carry half of a heat shield: when rescued they walk their
+  part to the hut first (whatever shape it's in), then go to work. Hut at
+  MAX + both parts = the heat shield appears at the door; take it to the
+  rocket (the rocket's sign asks for it).
+- Crew: the two who came with you arrive with you and keep gathering; on a
+  new planet the next rescue gathers and the 4th explores. Explorers walk
+  slower, chart unexplored ground for the map, and cross rivers only by a
+  fixed bridge (gatherers too).
+- Launch: you and two crew (a random pick) board; the other two walk to the
+  hut, wave as the rocket lifts, and go inside to make a home there.
+- Crew wear the suit colour of the planet they were lost on.
+- Your tools and skills come with you to each new planet.
+Still to come: the relic (a hidden carry-over item), Todd is designing it.

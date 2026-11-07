@@ -12,6 +12,8 @@ export const MATERIALS = {
   polishedCrystal: { name: 'Polished crystal', color: '#ff7aa8', dark: '#d94a7c', shape: 'cube', refined: true, stage: 1 },
   goldBar:         { name: 'Gold bar',         color: '#ffd65a', dark: '#d9a520', shape: 'bar',  refined: true, stage: 1 },
   powerCore:       { name: 'Power core',       color: '#5ff2ff', dark: '#1aa7c4', shape: 'core', refined: true, stage: 2 },
+  // special: a part only the hut makes (planets after Ember); never stored in the shed
+  heatShield:      { name: 'Heat shield',      color: '#ff9f43', dark: '#d9731a', shape: 'shield', refined: true, stage: 2, special: true },
   // ready for later planets
   blueCrystal: { name: 'Blue crystal', color: '#4fa8ff', dark: '#2a6fcc', skill: 'mine', tier: 3, shape: 'crystal', node: 'crystal', perNode: 5, stage: 0 },
   ice:         { name: 'Ice',          color: '#bfeaff', dark: '#86c6e6', skill: 'mine', tier: 2, shape: 'chunk',   node: 'boulder', perNode: 4, stage: 0 },
@@ -34,6 +36,7 @@ export function icon(id, size = 18) {
     cap: `<path d="M3 11 Q10 1 17 11 Z" fill="${c}"/><rect x="8" y="11" width="4" height="6" rx="1.5" fill="#efe6d8"/><circle cx="8" cy="8" r="1.2" fill="#fff" opacity=".7"/>`,
     cube: `<path d="M10 2 L17 6 L10 10 L3 6 Z" fill="#ffd0e0"/><path d="M3 6 L10 10 L10 18 L3 14 Z" fill="${c}"/><path d="M17 6 L10 10 L10 18 L17 14 Z" fill="${d}"/>`,
     bar: `<path d="M5 7 L15 7 L18 14 L2 14 Z" fill="${c}"/><path d="M5 7 L15 7 L14 9 L6 9 Z" fill="#fff3c0"/><path d="M2 14 L18 14 L17 16 L3 16 Z" fill="${d}"/>`,
+    shield: `<path d="M10 2 L17 5 L16 12 Q14 16 10 18 Q6 16 4 12 L3 5 Z" fill="${c}"/><path d="M10 2 L10 18 Q6 16 4 12 L3 5 Z" fill="${d}"/><path d="M7 8 L13 8 M7 11 L13 11" stroke="#fff3e0" stroke-width="1.4"/>`,
     core: `<circle cx="10" cy="10" r="8" fill="${d}"/><circle cx="10" cy="10" r="5.5" fill="${c}"/><circle cx="8.5" cy="8.5" r="2" fill="#e8feff"/><path d="M10 1 L10 4 M10 16 L10 19 M1 10 L4 10 M16 10 L19 10" stroke="${c}" stroke-width="1.6"/>`,
   };
   return `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 20 20" aria-label="${m.name}">${shapes[m.shape]}</svg>`;

@@ -23,7 +23,9 @@ const RADII = [9, 15, 22, 30]; // maxing every bubble covers the whole planet
 
 export const PLANET1 = {
   name: 'Ember',
-  seed: 1,
+  seed: 1, index: 0,
+  // which planet material plays which part (A, B: early raw; C, D: later raw)
+  roles: { A: 'wood', B: 'stone', C: 'redCrystal', D: 'gold' },
   radius: 93,
   materials: ['wood', 'stone', 'redCrystal', 'gold'],
   refined: ['polishedCrystal', 'goldBar', 'powerCore'],
@@ -84,12 +86,12 @@ export const PLANET1 = {
   ] },
   rocket: { x: -36, z: 64, cost: { stone: 30, polishedCrystal: 4, goldBar: 4, powerCore: 3 } },
 
-  // lost astronauts waiting in little help bubbles
-  astronauts: [[58, 64], [-78, 36], [-82, -18], [-18, -84], [72, -56], [86, 24]],
+  // two lost astronauts waiting in little help bubbles: one near home, one past the first bridge
+  astronauts: [[58, 64], [-82, -18]],
 
   // where resource nodes grow (scattered from the seed)
   zones: [
-    { node: 'tree', x: -24, z: 54, r: 8, n: 7 }, { node: 'boulder', x: -30, z: 48, r: 8, n: 5 },
+    { node: 'tree', x: -24, z: 54, r: 8, n: 7 }, { node: 'boulder', x: -14, z: 44, r: 6, n: 5 },
     { node: 'tree', x: 4, z: 78, r: 12, n: 10 }, { node: 'boulder', x: 30, z: 70, r: 10, n: 7 },
     { node: 'tree', x: 24, z: 46, r: 12, n: 10 }, { node: 'crystal', x: -44, z: 70, r: 10, n: 8 },
     { node: 'tree', x: -66, z: 50, r: 12, n: 9 }, { node: 'boulder', x: -40, z: 30, r: 10, n: 7 },

@@ -1,9 +1,25 @@
 import * as THREE from 'three';
 import { MATERIALS, icon, STAGE_CAP, STAGE_NAME } from './materials.js';
 import { PLANET1, NODE_MATERIAL } from './planet.js';
+import { generatePlanet, LOOKS } from './planetgen.js';
 
-const P = PLANET1;
-const SAVE_KEY = 'bloom-save-v2'; // the bigger planet: older saves start fresh
+// ---- which planet are we on? Ember first, then generated planets. The journey (planet number,
+// its seed, the crew who came along, your tools and skills) lives in GAME_KEY; each planet has
+// its own save.
+const GAME_KEY = 'bloom-game-v3';
+let game = null;
+try { game = JSON.parse(localStorage.getItem(GAME_KEY) || 'null'); } catch (e) {}
+if (!game) game = { planet: 0, seed: 0, crew: [], tools: null, skills: null };
+const P = game.planet === 0 ? PLANET1 : generatePlanet(game.seed, game.planet);
+if (!P.look) P.look = LOOKS.ember;
+const SAVE_KEY = 'bloom-save-v3-p' + game.planet; // Ember's rework: older saves start fresh
+const LOOK = P.look;
+const glsl3 = (hex) => { const c = parseInt(hex.slice(1), 16); return `vec3(${((c >> 16) & 255) / 255}, ${((c >> 8) & 255) / 255}, ${(c & 255) / 255})`; };
+// suit colours: astronauts wear the colour of the planet they were lost on
+const SUIT_COLORS = ['#7ed957', '#ffb347', '#6ec6ff', '#ff7eb6', '#c59bff', '#ffe066', '#5fe0c0'];
+// Ember's materials play the parts A-D; tool upgrades use whatever plays that part here
+const ROLE_OF = { wood: P.roles.A, stone: P.roles.B, redCrystal: P.roles.C, gold: P.roles.D };
+const remap = (cost) => { const o = {}; for (const [m, n] of Object.entries(cost)) o[ROLE_OF[m] || m] = (o[ROLE_OF[m] || m] || 0) + n; return o; };
 
 // ------------------------------------------------------------------ tuning
 const WALK = 6.2;            // walking speed (units / s)
@@ -13,20 +29,22 @@ const SITE_REACH = 2.0;      // generators: you stop about 1.55 from their centr
 const BASE_SWING = 0.62;     // seconds between tool swings at level 1
 const REGROW = 45;           // seconds for a used-up node to grow back
 const TOOL_SPEED = [1, 1.5, 2.1];
-const BAG_SIZES = [30, 40, 55, 70];
+const BAG_SIZES = [30, 45, 60, 80, 100];
 const AIR_TIMES = [12, 20, 30, 45];
 const UPGRADES = {
   pick:  { name: 'Pickaxe',  note: ['Stone pick', 'Crystal pick: mines gold', 'Golden pick: swings fast'], costs: [{ stone: 12, redCrystal: 8 }, { goldBar: 3, redCrystal: 12 }] },
   axe:   { name: 'Axe',      note: ['Stone axe', 'Crystal axe', 'Golden axe'], costs: [{ wood: 12, stone: 8 }, { stone: 14, redCrystal: 10 }] },
-  bag:   { name: 'Backpack', note: BAG_SIZES.map((s) => `Holds ${s}`), costs: [{ wood: 14, stone: 10 }, { redCrystal: 16, stone: 12 }, { gold: 10, redCrystal: 14 }] },
+  bag:   { name: 'Backpack', note: BAG_SIZES.map((s) => `Holds ${s}`), costs: [{ wood: 14, stone: 10 }, { stone: 16, redCrystal: 12 }, { redCrystal: 16, gold: 10 }, { goldBar: 4, gold: 14 }] },
   suit:  { name: 'Space suit', note: AIR_TIMES.map((s) => `${s}s of air outside`), costs: [{ wood: 10, stone: 10 }, { redCrystal: 12, stone: 10 }, { gold: 8, redCrystal: 12 }] },
 };
+for (const u of Object.values(UPGRADES)) u.costs = u.costs.map(remap);
 
 // ------------------------------------------------------------------ game state
 const bag = {};
 const tools = { pick: 0, axe: 0, bag: 0, suit: 0 };
 const skills = { mine: 0, chop: 0 };
 let rescued = 0, restore = 0, hudDirty = true, incoming = 0, badge = false;
+const retired = new Set(); // raw materials nothing on the planet needs any more
 
 // ------------------------------------------------------------------ helpers
 function rng(seed) { let s = seed * 9301 + 49297; return () => ((s = (s * 16807) % 2147483647) / 2147483647); }
@@ -104,9 +122,9 @@ groundMat.onBeforeCompile = (s) => {
     float glow; float a = aliveF(p, glow);
     float n = vnoise(p * 0.18) * 0.6 + vnoise(p * 0.7) * 0.4;
     float cr = smoothstep(0.0, 0.07, crack(p * 0.32));
-    vec3 dead = mix(vec3(0.6, 0.3, 0.2), vec3(0.72, 0.4, 0.27), n);
-    dead = mix(vec3(0.4, 0.19, 0.13), dead, cr);
-    vec3 grass = mix(vec3(0.3, 0.66, 0.2), vec3(0.45, 0.78, 0.26), n);
+    vec3 dead = mix(${glsl3(LOOK.dead[0])}, ${glsl3(LOOK.dead[1])}, n);
+    dead = mix(${glsl3(LOOK.dead[2])}, dead, cr);
+    vec3 grass = mix(${glsl3(LOOK.grass[0])}, ${glsl3(LOOK.grass[1])}, n);
     grass *= 0.94 + 0.08 * vnoise(p * 1.7);
     vec3 col = mix(dead, grass, a);
     col += vec3(0.25, 0.95, 1.0) * glow * 0.55;
@@ -119,10 +137,10 @@ ground.receiveShadow = true;
 scene.add(ground);
 {
   // the planet's rim, fading into space
-  const rim = new THREE.Mesh(new THREE.CylinderGeometry(WORLD_R, WORLD_R * 0.82, 10, 96, 1, true), mat('#6b3b2a'));
+  const rim = new THREE.Mesh(new THREE.CylinderGeometry(WORLD_R, WORLD_R * 0.82, 10, 96, 1, true), mat(LOOK.rim));
   rim.position.y = -5;
   scene.add(rim);
-  const under = new THREE.Mesh(new THREE.ConeGeometry(WORLD_R * 0.82, 26, 48), mat('#4a2a22'));
+  const under = new THREE.Mesh(new THREE.ConeGeometry(WORLD_R * 0.82, 26, 48), mat(LOOK.under));
   under.rotation.x = Math.PI; under.position.y = -23;
   scene.add(under);
   // stars below and around the little planet
@@ -140,15 +158,15 @@ scene.add(ground);
 const river = P.river;
 function riverInfo(x, z) {
   // distance to the river's centre line and the direction it runs at the closest point
-  let best = Infinity, tx = 1, tz = 0;
+  let best = Infinity, tx = 1, tz = 0, side = 1;
   for (let i = 0; i < river.points.length - 1; i++) {
     const [ax, az] = river.points[i], [bx, bz] = river.points[i + 1];
     const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz;
     const t = clamp(((x - ax) * dx + (z - az) * dz) / L2, 0, 1);
     const d = Math.hypot(x - ax - dx * t, z - az - dz * t);
-    if (d < best) { best = d; const L = Math.sqrt(L2); tx = dx / L; tz = dz / L; }
+    if (d < best) { best = d; const L = Math.sqrt(L2); tx = dx / L; tz = dz / L; side = Math.sign(dx * (z - az) - dz * (x - ax)) || 1; }
   }
-  return { d: best, tx, tz };
+  return { d: best, tx, tz, side };
 }
 {
   // a ribbon mesh along a smoothed river path
@@ -186,8 +204,8 @@ function riverInfo(x, z) {
         vec2 q = vec2(vUv.x * 0.35 - uTime * 0.6, vUv.y * 2.2);
         float n = vnoise(q * 1.3) * 0.65 + vnoise(q * 3.1 + 7.0) * 0.35;
         float edge = smoothstep(0.0, 0.18, vUv.y) * smoothstep(1.0, 0.82, vUv.y);
-        vec3 lava = mix(vec3(0.78, 0.13, 0.12), vec3(0.98, 0.42, 0.32), smoothstep(0.55, 0.8, n));
-        vec3 water = mix(vec3(0.21, 0.58, 0.9), vec3(0.95, 0.98, 1.0), smoothstep(0.62, 0.78, n));
+        vec3 lava = mix(${glsl3(LOOK.lava[0])}, ${glsl3(LOOK.lava[1])}, smoothstep(0.55, 0.8, n));
+        vec3 water = mix(${glsl3(LOOK.water[0])}, ${glsl3(LOOK.water[1])}, smoothstep(0.62, 0.78, n));
         vec3 col = mix(lava, water, a);
         col = mix(col * 0.82, col, edge);
         col += vec3(0.25, 0.95, 1.0) * glow * 0.4;
@@ -224,7 +242,7 @@ function makeTree(seed) {
   const h = 0.9 + r() * 0.5, s = 0.85 + r() * 0.35;
   const trunk = mesh(new THREE.CylinderGeometry(0.16, 0.24, 1.1, 7), '#8a5a35'); trunk.position.y = 0.55;
   alive.add(trunk);
-  const greens = ['#3fae5a', '#4cbc63', '#36a052'];
+  const greens = LOOK.leaves;
   for (let i = 0; i < 3; i++) {
     const c = mesh(new THREE.ConeGeometry(1.05 - i * 0.24, 1.25, 8), greens[(i + Math.floor(r() * 3)) % 3]);
     c.position.y = 1.15 + i * 0.62;
@@ -267,6 +285,40 @@ function makeCrystal(seed, color = '#ef4b5f') {
     grp.add(c);
   }
   return grp;
+}
+function makeIce(seed) {
+  const r = rng(seed);
+  const grp = new THREE.Group();
+  for (let i = 0; i < 3; i++) {
+    const m = mesh(new THREE.IcosahedronGeometry(0.55 + r() * 0.35, 0), i ? '#d9f4ff' : '#bfeaff', { flatShading: true, transparent: true, opacity: 0.88, emissive: '#9fdcff', emissiveIntensity: 0.12 });
+    const a = r() * Math.PI * 2; m.position.set(i ? Math.cos(a) * 0.55 : 0, 0.42 + r() * 0.2, i ? Math.sin(a) * 0.55 : 0); m.scale.set(1, 1.3 + r() * 0.5, 1); m.rotation.y = r() * 6;
+    grp.add(m);
+  }
+  return grp;
+}
+function makeShroom(seed) {
+  const r = rng(seed);
+  const grp = new THREE.Group();
+  for (let i = 0; i < 3; i++) {
+    const h = 0.5 + r() * 0.7, cs = 0.35 + r() * 0.35;
+    const stem = mesh(new THREE.CylinderGeometry(0.1, 0.14, h, 7), '#efe6d8');
+    const cap = mesh(new THREE.SphereGeometry(cs, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), '#b48ef0', { emissive: '#b48ef0', emissiveIntensity: 0.3 });
+    const a = r() * Math.PI * 2, d = i ? 0.45 : 0;
+    stem.position.set(Math.cos(a) * d, h / 2, Math.sin(a) * d); cap.position.set(Math.cos(a) * d, h, Math.sin(a) * d);
+    grp.add(stem, cap);
+  }
+  return grp;
+}
+// the model for a node of any material
+function nodeModel(matId, seed) {
+  switch (matId) {
+    case 'wood': return makeTree(seed);
+    case 'stone': return makeBoulder(seed);
+    case 'gold': return makeOre(seed);
+    case 'ice': return makeIce(seed);
+    case 'mushroom': return makeShroom(seed);
+    default: return makeCrystal(seed, MATERIALS[matId].color);
+  }
 }
 function makeOre(seed) {
   const grp = makeBoulder(seed);
@@ -405,6 +457,7 @@ const BRIDGE_LOOK = {
   wood: { a: '#b07a45', b: '#9c6a3b', post: '#7d5230', rail: '#8a5a35', opts: {} },
   crystal: { a: '#ff7a8f', b: '#ef4b5f', post: '#ff9fb0', rail: '#ffc2cd', opts: { emissive: '#ef4b5f', emissiveIntensity: 0.35, transparent: true, opacity: 0.92 }, crystal: true },
   gold: { a: '#ffd65a', b: '#f5c542', post: '#d9a520', rail: '#ffe58a', opts: { emissive: '#c99a1c', emissiveIntensity: 0.15 } },
+  blue: { a: '#7fbcff', b: '#4fa8ff', post: '#a8d4ff', rail: '#cfe6ff', opts: { emissive: '#4fa8ff', emissiveIntensity: 0.35, transparent: true, opacity: 0.92 }, crystal: true },
 };
 function makeBridge(repaired, tx, tz, kind = 'wood') {
   // built in a local frame where the river runs along X and you walk across it along Z
@@ -452,18 +505,18 @@ const nodes = [];
           Math.hypot(P.rocket.x - x, P.rocket.z - z) > 4.5 && Math.hypot(P.workbench.x - x, P.workbench.z - z) > 3.5 &&
           Math.hypot(P.start.x - x, P.start.z - z) > 2.5 &&
           !P.extractors.some((e) => Math.hypot(e.x - x, e.z - z) < 4) && !P.bridges.some((b) => Math.hypot(b.at[0] - x, b.at[1] - z) < 7) &&
-          !P.refiners.some((m) => Math.abs(m.x - x) < 6.5 && Math.abs(m.z - z) < 3.5) && Math.hypot(P.shed.x - x, P.shed.z - z) > 4.5 &&
+          !P.refiners.some((m) => Math.abs(m.x - x) < 6.5 && Math.abs(m.z - z) < 3.5) && Math.hypot(P.shed.x - x, P.shed.z - z) > 8 && Math.hypot(P.shed.x - x, P.shed.z + 3 - z) > 8 && !(P.hut && Math.hypot(P.hut.x - x, P.hut.z - z) < 7) &&
           Math.hypot(P.workbench.x - x, P.workbench.z - 1.5 - z) > 5.5;
       }
       if (!ok) continue;
-      const type = zone.node;
-      const obj = type === 'tree' ? makeTree(seed) : type === 'boulder' ? makeBoulder(seed) : type === 'crystal' ? makeCrystal(seed) : makeOre(seed);
+      const matId = zone.mat || NODE_MATERIAL[zone.node];
+      const type = MATERIALS[matId].node;
+      const obj = nodeModel(matId, seed);
       seed++;
       obj.position.set(x, 0, z);
       obj.rotation.y = r() * Math.PI * 2;
       scene.add(obj);
-      const matId = NODE_MATERIAL[type];
-      const node = { type, mat: matId, x, z, obj, hp: MATERIALS[matId].perNode, max: MATERIALS[matId].perNode, regrow: 0, shake: 0, scale: 1, r: type === 'tree' ? 0.55 : 0.95 };
+      const node = { type, mat: matId, x, z, obj, hp: MATERIALS[matId].perNode, max: MATERIALS[matId].perNode, regrow: 0, shake: 0, scale: 1, r: type === 'tree' || type === 'shroom' ? 0.55 : 0.95 };
       nodes.push(node);
       colliders.push(node);
     }
@@ -487,9 +540,9 @@ const decoPts = [];
     decoPts.push({ x, z, rot: r() * 6, s: 0.7 + r() * 0.6, kind: r() });
   }
 }
-const grassMesh = new THREE.InstancedMesh(new THREE.ConeGeometry(0.12, 0.6, 4), mat('#5cbf45'), decoPts.length * 3);
+const grassMesh = new THREE.InstancedMesh(new THREE.ConeGeometry(0.12, 0.6, 4), mat(LOOK.deco), decoPts.length * 3);
 const flowerMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.16, 8, 6), new THREE.MeshLambertMaterial(), decoPts.length);
-const pebbleMesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(0.22, 0), mat('#8e5a45', { flatShading: true }), decoPts.length);
+const pebbleMesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(0.22, 0), mat(LOOK.pebble, { flatShading: true }), decoPts.length);
 [grassMesh, flowerMesh, pebbleMesh].forEach((m) => { m.receiveShadow = true; scene.add(m); });
 {
   const flowerCols = ['#ffffff', '#ffd23f', '#f49ac1', '#b48ef0', '#ff8f6b'];
@@ -589,8 +642,7 @@ const extractors = P.extractors.map((e) => ({ ...e, level: -1, stored: 0, timer:
 for (const ex of extractors) {
   const color = MATERIALS[ex.mat].color;
   ex.model = makeExtractor(color); ex.model.position.set(ex.x, 0, ex.z); scene.add(ex.model);
-  ex.deposit = makeCrystal(77, color); ex.deposit.position.set(ex.x, 0, ex.z); scene.add(ex.deposit);
-  if (ex.mat === 'gold') { scene.remove(ex.deposit); ex.deposit = makeOre(77); ex.deposit.position.set(ex.x, 0, ex.z); scene.add(ex.deposit); }
+  ex.deposit = nodeModel(ex.mat, 77); ex.deposit.position.set(ex.x, 0, ex.z); scene.add(ex.deposit);
   ex.sign = makeSign(); ex.sign.position.set(ex.x + 2.2, 0, ex.z + 1.4); scene.add(ex.sign);
   colliders.push({ x: ex.x, z: ex.z, r: 1.3 });
   ex.site = addSite({
@@ -624,7 +676,7 @@ const bridges = P.bridges.map((def, i) => {
   br.sign = makeSign(); br.sign.position.set(bx - info.tz * 6 + info.tx * 2, 0, bz + info.tx * 6 + info.tz * 2); scene.add(br.sign);
   br.site = addSite({
     x: bx - info.tz * 6, z: bz + info.tx * 6, reach: 1.6,
-    title: () => (def.kind === 'crystal' ? 'Broken crystal bridge' : def.kind === 'gold' ? 'Broken golden bridge' : 'Broken bridge'),
+    title: () => (def.kind === 'crystal' || def.kind === 'blue' ? 'Broken crystal bridge' : def.kind === 'gold' ? 'Broken golden bridge' : 'Broken bridge'),
     cost: () => { if (br.repaired) return null; const left = {}; for (const [m, n] of Object.entries(def.cost)) left[m] = n - (br.paid[m] || 0); return left; },
     pay: (m) => { br.paid[m] = (br.paid[m] || 0) + 1; },
     complete: () => { br.repaired = true; sfx.build(); toast('Bridge repaired! You can cross the river here.', true); refreshBridge(br); },
@@ -871,8 +923,10 @@ function shedNear() { return shed.level >= 0 && Math.hypot(P.shed.x - player.x, 
 function renderShed() {
   let html = `<div class="shead">Shed<span>LVL ${shed.level + 1}</span></div>`;
   for (const m of [...P.materials, ...P.refined]) {
+    if (MATERIALS[m].special) continue;
     const b = bag[m] || 0, st = shed.store[m] || 0;
     if (!b && !st) continue;
+    if (retired.has(m)) { html += `<button class="srow done" data-m="${m}" aria-label="${MATERIALS[m].name}">${icon(m, 24)}<span><b>${b}</b><i>✓ recycle</i></span></button>`; continue; }
     const ok = shedHolds(m) || st > 0;
     html += `<button class="srow${ok ? '' : ' no'}${ok && st >= capOf(m) ? ' full' : ''}" data-m="${m}" aria-label="${MATERIALS[m].name}">${icon(m, 24)}<span><b>${b}</b><i>${ok ? `${st}/${capOf(m)}` : 'upgrade'}</i></span></button>`;
   }
@@ -883,6 +937,12 @@ shedEl.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-m]');
   if (!btn) return;
   const m = btn.dataset.m, name = MATERIALS[m].name.toLowerCase();
+  if (retired.has(m)) {
+    // nothing needs it any more: everything you hand in is recycled, and the shelf is cleared
+    const n = (bag[m] || 0) + (shed.store[m] || 0);
+    bag[m] = 0; shed.store[m] = 0; sfx.pay(); toast(`Recycled ${n} ${name}: nothing needs it any more`);
+    hudDirty = true; renderShed(); return;
+  }
   // one tap: store it if any of it can go in; if nothing can, take some out instead
   const canStore = Math.min(bag[m] || 0, shedRoom(m));
   if (canStore > 0) {
@@ -903,20 +963,27 @@ shedEl.addEventListener('click', (e) => {
 });
 
 // --- lost astronauts
-const lost = P.astronauts.map(([x, z], i) => {
-  const m = makeAstronaut('#7ed957');
-  m.position.set(x, 0, z); m.rotation.y = Math.PI;
+const planetColor = SUIT_COLORS[game.planet % SUIT_COLORS.length];
+const lost = [
+  ...P.astronauts.map(([x, z]) => ({ x, z, color: planetColor, carried: false })),
+  ...(game.planet > 0 ? game.crew || [] : []).map((c, k) => ({ x: P.start.x - 1.6 + k * 3.2, z: P.start.z + 2.6, color: c.color, name: c.name, carried: true })),
+].map((d, i) => {
+  const m = makeAstronaut(d.color);
+  m.position.set(d.x, 0, d.z); m.rotation.y = Math.PI;
   scene.add(m);
-  const dome = new THREE.Mesh(domeGeo, domeMat); dome.scale.set(1.9, 1.6, 1.9); dome.position.set(x, 0, z); scene.add(dome);
+  const dome = new THREE.Mesh(domeGeo, domeMat); dome.scale.set(1.9, 1.6, 1.9); dome.position.set(d.x, 0, d.z); scene.add(dome);
   const el = document.createElement('div'); el.className = 'help'; el.textContent = 'HELP'; sitesEl.appendChild(el);
-  return { x, z, m, dome, el, state: 'waiting', i };
+  if (d.carried) dome.visible = false;
+  return { x: d.x, z: d.z, m, dome, el, state: d.carried ? 'rescued' : 'waiting', i, color: d.color, name: d.name, carried: d.carried };
 });
+const newLost = lost.filter((a) => !a.carried);
+rescued = lost.length - newLost.length;
 
 // ------------------------------------------------------------------ player
 const player = { x: P.start.x, z: P.start.z, face: Math.PI, model: makeAstronaut(), swing: 0, swingT: 0, walk: 0, air: AIR_TIMES[0], floating: false, target: null };
 player.model.position.set(player.x, 0, player.z);
 scene.add(player.model);
-const bagCap = () => BAG_SIZES[tools.bag] + rescued * 5;
+const bagCap = () => BAG_SIZES[tools.bag];
 const bagCount = () => Object.values(bag).reduce((a, b) => a + b, 0);
 // room left, counting pieces already flying toward you
 const bagRoom = () => bagCap() - bagCount() - incoming;
@@ -1070,7 +1137,7 @@ function gather(dt) {
   player.swingT -= dt;
   let target = null, bd = Infinity;
   for (const n of nodes) {
-    if (n.hp <= 0) continue;
+    if (n.hp <= 0 || retired.has(n.mat)) continue;
     const d = Math.hypot(n.x - player.x, n.z - player.z) - n.r;
     if (d < REACH && d < bd) { bd = d; target = n; }
   }
@@ -1159,7 +1226,7 @@ function updateExtractors(dt) {
     u.drill.position.y = 1.5 + Math.sin(performance.now() / 150) * (ex.stored < L.cap ? 0.12 : 0);
     if (ex.stored < L.cap) { ex.timer += dt; if (ex.timer >= L.every) { ex.timer = 0; ex.stored++; renderSite(ex.site); } }
     // walk past to collect
-    if (Math.hypot(ex.x - player.x, ex.z - player.z) < 2.2 && ex.stored > 0 && bagRoom() > 0 && payT <= 0) {
+    if (Math.hypot(ex.x - player.x, ex.z - player.z) < 2.2 && ex.stored > 0 && bagRoom() > 0 && payT <= 0 && !retired.has(ex.mat)) {
       ex.stored--; payT = 0.08;
       toBag(ex.mat, new THREE.Vector3(ex.x, 1.8, ex.z));
       renderSite(ex.site);
@@ -1206,7 +1273,7 @@ function updateAir(dt) {
   const inside = aliveAt(player.x, player.z) > 0.5;
   if (inside) player.air = Math.min(maxAir(), player.air + dt * maxAir() / 1.2);
   else if (!player.floating) {
-    player.air -= dt;
+    player.air -= dt * (P.airDrain || 1);
     if (player.air <= 0) {
       player.air = 0;
       player.target = nearestBubblePoint();
@@ -1224,30 +1291,56 @@ function updateAir(dt) {
 // ---- crew: rescued astronauts get a job. Gatherers bring one material to the shed;
 // explorers wander the dead zone and come back with surprises.
 const CREW_NAMES = ['Ava', 'Kai', 'Mira', 'Leo', 'Juno', 'Theo', 'Nova', 'Remy'];
-const JOBS = [{ type: 'gather', mat: 'wood' }, { type: 'gather', mat: 'stone' }, { type: 'explore' }, { type: 'gather', mat: 'redCrystal' }, { type: 'gather', mat: 'gold' }, { type: 'explore' }];
-const CREW_SPEED = 4.2, CARRY = 5;
-function assignJob(a, order) {
-  a.name = CREW_NAMES[a.i % CREW_NAMES.length];
-  a.job = JOBS[order % JOBS.length]; a.jobIdx = order;
+const CREW_SPEED = 4.2, EXPLORE_SPEED = 3.0, CARRY = 5;
+// gatherers take the planet's raw materials in order (A, B, C, D), skipping ones that are no
+// longer needed or that someone else already gathers. On later planets the 4th crew member explores.
+function nextGatherMat(a) {
+  const taken = new Set(lost.filter((o) => o !== a && o.state === 'rescued' && o.job && o.job.type === 'gather').map((o) => o.job.mat));
+  const order = [P.roles.A, P.roles.B, P.roles.C, P.roles.D];
+  return order.find((m) => !retired.has(m) && !taken.has(m)) || order.find((m) => !retired.has(m)) || null;
+}
+function assignJob(a, job = null) {
+  if (!a.name) {
+    const used = new Set(lost.map((o) => o.name).filter(Boolean));
+    for (let k = 0; k < CREW_NAMES.length; k++) { const n = CREW_NAMES[(k + game.planet * 3) % CREW_NAMES.length]; if (!used.has(n)) { a.name = n; break; } }
+  }
+  if (job) a.job = job;
+  else {
+    const crew = lost.filter((o) => o !== a && o.state === 'rescued' && o.job);
+    if (game.planet > 0 && crew.length >= 3 && !crew.some((o) => o.job.type === 'explore')) a.job = { type: 'explore' };
+    else { const m = nextGatherMat(a); a.job = m ? { type: 'gather', mat: m } : { type: 'explore' }; }
+  }
   a.task = 'find'; a.carry = 0; a.t = 0; a.target = null; a.exploring = a.job.type === 'explore';
   crewLabel(a);
 }
 function crewLabel(a) {
   a.el.innerHTML = a.job.type === 'gather' && !a.exploring ? `${a.name} ${icon(a.job.mat, 14)}` : `${a.name} · ${a.job.type === 'gather' ? 'exploring' : 'explorer'}`;
 }
-function jobText(a) { return a.job.type === 'gather' ? `They'll gather ${MATERIALS[a.job.mat].name.toLowerCase()} for the shed` : 'They\'ll explore and bring back surprises'; }
-function riverZAt(x) {
-  const pts = river.points;
-  for (let i = 0; i < pts.length - 1; i++) if (x >= pts[i][0] && x <= pts[i + 1][0]) return lerp(pts[i][1], pts[i + 1][1], (x - pts[i][0]) / (pts[i + 1][0] - pts[i][0]));
-  return 0;
+function jobText(a) { return a.job.type === 'gather' ? `They'll gather ${MATERIALS[a.job.mat].name.toLowerCase()} for the shed` : 'They\'ll explore and fill in your map'; }
+const SHED_SIDE = riverInfo(P.shed.x, P.shed.z).side;
+// crew stay on the shed's side of the river until a bridge is fixed, then they cross by bridge
+const sameSide = (x, z) => riverInfo(x, z).side === SHED_SIDE || bridges.some((b) => b.repaired);
+function crewGo(a, tx, tz, dt) {
+  if (a.crossing) { if (walkTo(a, a.crossing.x, a.crossing.z, dt)) a.crossing = null; return false; }
+  const here = riverInfo(a.x, a.z).side, there = riverInfo(tx, tz).side;
+  if (here !== there) {
+    let best = null, bd = Infinity;
+    for (const b of bridges) if (b.repaired) { const d = Math.hypot(b.def.at[0] - a.x, b.def.at[1] - a.z); if (d < bd) { bd = d; best = b; } }
+    if (best) {
+      const nx = -best.tz, nz = best.tx, half = river.width / 2 + 2.5;
+      const e1 = { x: best.def.at[0] + nx * half, z: best.def.at[1] + nz * half }, e2 = { x: best.def.at[0] - nx * half, z: best.def.at[1] - nz * half };
+      const mine = riverInfo(e1.x, e1.z).side === here ? e1 : e2, other = mine === e1 ? e2 : e1;
+      if (walkTo(a, mine.x, mine.z, dt)) a.crossing = other;
+      return false;
+    }
+  }
+  return walkTo(a, tx, tz, dt);
 }
-const shedSide = () => P.shed.z > riverZAt(P.shed.x);
-const sameSide = (x, z) => (z > riverZAt(x)) === shedSide();
 const shedPad = () => ({ x: P.shed.x + (Math.random() - 0.5) * 1.2, z: P.shed.z + 2.6 });
 function walkTo(a, tx, tz, dt) {
   const dx = tx - a.x, dz = tz - a.z, d = Math.hypot(dx, dz);
   if (d < 0.25) return true;
-  const sp = Math.min(d, CREW_SPEED * dt);
+  const sp = Math.min(d, (a.exploring ? EXPLORE_SPEED : CREW_SPEED) * dt);
   a.x += (dx / d) * sp; a.z += (dz / d) * sp; a.m.rotation.y = Math.atan2(dx, dz);
   a.walking = true;
   return false;
@@ -1259,13 +1352,25 @@ function shedPut(m, n) {
 }
 function crewWork(a, dt, t) {
   a.walking = false; a.working = false;
-  if (!a.job) assignJob(a, a.jobIdx || 0);
+  if (!a.job) assignJob(a);
+  if (a.carryPart && hut) {
+    if (crewGo(a, P.hut.x + (a.i % 2 ? 0.8 : -0.8), P.hut.z + 2.4, dt)) {
+      a.carryPart = false; hut.parts++; sfx.build();
+      toast(`${a.name} left a shield part at the hut (${Math.min(2, hut.parts)}/2)`, true);
+      hutCheckShield(); refreshHut(); renderSite(hut.site);
+    }
+  } else
   if (shed.level < 0) {
     // nothing to do until the shed is repaired: wait near it
     if (!a.idleSpot) a.idleSpot = { x: P.shed.x - 3 + a.i * 1.2, z: P.shed.z + 4.5 };
     walkTo(a, a.idleSpot.x, a.idleSpot.z, dt);
   } else if (a.job.type === 'gather' && !a.exploring) {
-    if (a.task === 'find' && shedFull(a.job.mat)) {
+    if (a.task === 'find' && retired.has(a.job.mat)) {
+      // nothing on the planet needs this any more: switch to a material that's still needed
+      const m = nextGatherMat(a);
+      if (m) { a.job = { type: 'gather', mat: m }; crewLabel(a); if (Math.hypot(a.x - player.x, a.z - player.z) < 40) toast(`${a.name} switched to ${MATERIALS[m].name.toLowerCase()}`); }
+      else { a.job = { type: 'explore' }; a.exploring = true; crewLabel(a); }
+    } else if (a.task === 'find' && shedFull(a.job.mat)) {
       // the shed has all it can hold of this: go exploring until there's room again
       a.exploring = true; a.task = 'find'; crewLabel(a);
     } else if (a.task === 'find') {
@@ -1281,7 +1386,7 @@ function crewWork(a, dt, t) {
       if (!n || n.hp <= 0) { a.task = a.carry ? 'return' : 'find'; if (n) n.claim = null; }
       else {
         const dx = n.x - a.x, dz = n.z - a.z, d = Math.hypot(dx, dz);
-        if (d < n.r + 1.05) { a.task = "work"; a.t = 0; } else walkTo(a, n.x - (dx / d) * (n.r + 0.7), n.z - (dz / d) * (n.r + 0.7), dt);
+        if (d < n.r + 1.05) { a.task = "work"; a.t = 0; } else crewGo(a, n.x - (dx / d) * (n.r + 0.7), n.z - (dz / d) * (n.r + 0.7), dt);
       }
     } else if (a.task === 'work') {
       const n = a.target;
@@ -1295,7 +1400,7 @@ function crewWork(a, dt, t) {
       }
     } else if (a.task === 'return') {
       if (!a.dest) a.dest = shedPad();
-      if (walkTo(a, a.dest.x, a.dest.z, dt)) {
+      if (crewGo(a, a.dest.x, a.dest.z, dt)) {
         const put = shedPut(a.job.mat, a.carry);
         a.carry -= put; a.dest = null;
         a.task = a.carry > 0 ? 'full' : 'find';
@@ -1311,27 +1416,27 @@ function crewWork(a, dt, t) {
       for (let k = 0; k < 40 && !spot; k++) {
         const ang = Math.random() * Math.PI * 2, d = 20 + Math.random() * (P.radius - 26);
         const x = Math.cos(ang) * d, z = Math.sin(ang) * d;
-        if (sameSide(x, z) && aliveAt(x, z) < 0.3) spot = { x, z };
+        if (sameSide(x, z) && riverInfo(x, z).d > river.width / 2 + 2 && (aliveAt(x, z) < 0.3 || (k < 25 && !isSeen(x, z)))) spot = { x, z };
       }
       if (!spot) { const ang = Math.random() * Math.PI * 2; spot = { x: P.shed.x + Math.cos(ang) * 30, z: P.shed.z + Math.sin(ang) * 20 }; if (!sameSide(spot.x, spot.z) || Math.hypot(spot.x, spot.z) > P.radius - 4) spot = { x: P.shed.x + 8, z: P.shed.z + 6 }; }
       a.dest = spot; a.task = 'out';
     } else if (a.task === 'out') {
-      if (walkTo(a, a.dest.x, a.dest.z, dt)) { a.task = 'search'; a.t = 0; }
+      if (crewGo(a, a.dest.x, a.dest.z, dt)) { a.task = 'search'; a.t = 0; }
     } else if (a.task === 'search') {
       a.working = true; a.t += dt;
       if (a.t > 4) { a.task = 'return'; a.dest = shedPad(); }
     } else if (a.task === 'return') {
-      if (walkTo(a, a.dest.x, a.dest.z, dt)) {
+      if (crewGo(a, a.dest.x, a.dest.z, dt)) {
         // finds: a little raw material the shed still has room for, sometimes a refined item,
         // rarely a manufactured one (a little more often when the raw shelves are full)
         const found = {};
-        const roomy = P.materials.filter((m) => !shedFull(m));
+        const roomy = P.materials.filter((m) => !shedFull(m) && !retired.has(m));
         const picks = roomy.sort(() => Math.random() - 0.5).slice(0, 2);
         for (const m of picks) found[m] = 2 + Math.floor(Math.random() * 3);
         const rawFull = roomy.length === 0;
-        const refinedIds = P.refined.filter((m) => MATERIALS[m].stage === 1), madeIds = P.refined.filter((m) => MATERIALS[m].stage === 2);
-        if (refinedIds.length && Math.random() < (rawFull ? 0.45 : 0.3)) found[refinedIds[Math.floor(Math.random() * refinedIds.length)]] = 1;
-        if (madeIds.length && Math.random() < (rawFull ? 0.09 : 0.05)) found[madeIds[0]] = 1;
+        const refinedIds = P.refined.filter((m) => MATERIALS[m].stage === 1), madeIds = P.refined.filter((m) => MATERIALS[m].stage === 2 && !MATERIALS[m].special);
+        if (refinedIds.length && Math.random() < (rawFull ? 0.12 : 0.08)) found[refinedIds[Math.floor(Math.random() * refinedIds.length)]] = 1;
+        if (madeIds.length && Math.random() < (rawFull ? 0.02 : 0.01)) found[madeIds.filter((m) => !MATERIALS[m].special)[0]] = 1;
         const kept = [];
         for (const [m, n] of Object.entries(found)) { const k = shedPut(m, n); if (k) kept.push(`${k} ${MATERIALS[m].name.toLowerCase()}`); }
         if (kept.length && Math.hypot(a.x - player.x, a.z - player.z) < 40) toast(`${a.name} brought back ${kept.join(', ')}`);
@@ -1342,7 +1447,7 @@ function crewWork(a, dt, t) {
       if (a.t > 6) {
         a.task = 'find';
         // a gatherer goes back to work once the shed has room for their material again
-        if (a.job.type === 'gather' && !shedFull(a.job.mat)) { a.exploring = false; crewLabel(a); }
+        if (a.job.type === 'gather' && !shedFull(a.job.mat) && !retired.has(a.job.mat)) { a.exploring = false; crewLabel(a); }
       }
     }
   }
@@ -1359,7 +1464,7 @@ function updateLost(dt, t) {
   for (const a of lost) {
     if (a.state === 'waiting') {
       a.m.position.y = Math.sin(t * 2 + a.i) * 0.08;
-      if (Math.hypot(a.x - player.x, a.z - player.z) < 2.6) { a.state = 'following'; a.dome.visible = false; toast('Found a lost astronaut! Lead them into a bubble.', true); sfx.level(); }
+      if (Math.hypot(a.x - player.x, a.z - player.z) < 2.6) { a.state = 'following'; a.dome.visible = false; toast(hut ? 'Found a lost astronaut carrying part of a heat shield for the hut by the rocket! Lead them into a bubble.' : 'Found a lost astronaut! Lead them into a bubble.', true); sfx.level(); }
     } else if (a.state === 'following') {
       followIdx++;
       const back = 1.6 * followIdx;
@@ -1369,9 +1474,13 @@ function updateLost(dt, t) {
       a.m.position.set(a.x, Math.abs(Math.sin(t * 9)) * 0.08, a.z);
       if (aliveAt(a.x, a.z) > 0.7) {
         a.state = 'rescued'; rescued++;
-        assignJob(a, rescued - 1);
+        assignJob(a);
         sfx.fanfare();
-        toast(`${a.name} is safe (${rescued}/${lost.length})! ${jobText(a)}. Your bag holds 5 more.`, true);
+        if (hut) {
+          // on planets with a hut, every lost astronaut was carrying half of a heat shield
+          a.carryPart = true;
+          toast(`${a.name} is safe! They were carrying half of a heat shield and will take it to the hut. ${jobText(a)} after that.`, true);
+        } else toast(`${a.name} is safe (${newLost.filter((o) => o.state === 'rescued').length}/${newLost.length})! ${jobText(a)}.`, true);
         a.home = homeSpot(a.i);
         hudDirty = true;
       }
@@ -1393,7 +1502,7 @@ function updateHUD() {
   restoreEl.style.setProperty('--p', restore);
   restoreEl.querySelector('b').textContent = badge ? '100% ★' : `${pctAlive()}%`;
   restoreEl.classList.toggle('gold', badge);
-  sosEl.textContent = `${rescued}/${lost.length}`;
+  sosEl.textContent = `${newLost.filter((o) => o.state === 'rescued').length}/${newLost.length}`;
   for (const s of sites) renderSite(s);
   if (shed.open) renderShed();
   hudDirty = false;
@@ -1430,6 +1539,90 @@ function updateOverlays() {
   shedEl.classList.toggle('gone', !open);
 }
 
+
+// ------------------------------------------------------------------ the hut (planets after Ember)
+// Repair it and upgrade it; at MAX it makes the heat shield the rocket needs. At launch, two of
+// the crew stay behind and move in.
+function makeHut() {
+  const grp = new THREE.Group(), whole = new THREE.Group(), broken = new THREE.Group();
+  const wall = mesh(new THREE.BoxGeometry(3.4, 2.2, 2.8), '#c9935a'); wall.position.y = 1.1;
+  const roof = mesh(new THREE.ConeGeometry(2.9, 1.6, 4), '#b5553c', { flatShading: true }); roof.position.y = 3.0; roof.rotation.y = Math.PI / 4;
+  const door = mesh(new THREE.BoxGeometry(0.9, 1.5, 0.1), '#6b4428'); door.position.set(0, 0.75, 1.42);
+  const win = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.1), new THREE.MeshBasicMaterial({ color: '#ffd77a' })); win.position.set(1.0, 1.4, 1.42);
+  const chim = mesh(new THREE.BoxGeometry(0.4, 1.0, 0.4), '#8d8f98'); chim.position.set(-0.9, 3.2, -0.4);
+  whole.add(wall, roof, door, win, chim);
+  for (let i = 0; i < 6; i++) { const pl = mesh(new THREE.BoxGeometry(0.25, 1.6 - (i % 3) * 0.35, 0.12), '#a8784a'); pl.position.set(-1.5 + i * 0.6, 0.7, 1.3 - (i % 2) * 0.4); pl.rotation.z = (i % 2 ? 0.25 : -0.18); broken.add(pl); }
+  const beam = mesh(new THREE.BoxGeometry(3.2, 0.2, 0.2), '#8a5a35'); beam.position.set(0, 0.3, 0); beam.rotation.y = 0.4; broken.add(beam);
+  grp.add(whole, broken);
+  grp.userData = { whole, broken, win };
+  return grp;
+}
+const hut = P.hut ? { level: -1, paid: {}, shield: false, taken: false, parts: 0 } : null;
+const hutMax = () => !!hut && hut.level >= P.hut.levels.length - 1;
+// the shield is put together once the hut is at MAX and both astronauts have brought their part
+function hutCheckShield() {
+  if (hut && !hut.shield && hutMax() && hut.parts >= 2) { hut.shield = true; sfx.fanfare(); toast('The hut put the heat shield together! Take it from the door to the rocket.', true); }
+}
+function refreshHut() {
+  if (!hut) return;
+  const u = hut.model.userData;
+  u.whole.visible = hut.level >= 0; u.broken.visible = hut.level < 0;
+  u.win.material.color.set(hutMax() ? '#ffd77a' : '#7a6a58');
+  hut.shieldModel.visible = hut.shield && !hut.taken;
+}
+if (hut) {
+  hut.model = makeHut(); hut.model.position.set(P.hut.x, 0, P.hut.z); scene.add(hut.model);
+  colliders.push({ x: P.hut.x, z: P.hut.z, r: 2.0 });
+  hut.shieldModel = mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.14, 6), '#ff9f43', { emissive: '#ff9f43', emissiveIntensity: 0.6 });
+  hut.shieldModel.rotation.x = Math.PI / 2; hut.shieldModel.position.set(P.hut.x, 1.1, P.hut.z + 2.1); scene.add(hut.shieldModel);
+  hut.sign = makeSign(); hut.sign.position.set(P.hut.x + 2.7, 0, P.hut.z + 1.4); scene.add(hut.sign);
+  hut.site = addSite({
+    x: P.hut.x + 2.7, z: P.hut.z + 2.0, reach: 1.3,
+    title: () => (hut.level < 0 ? 'Broken hut' : `Hut · LVL ${hut.level + 1}`),
+    extra: () => `<span class="store">${icon('heatShield', 16)} Shield parts ${Math.min(2, hut.parts)}/2</span><span class="lock">${hut.shield ? 'Heat shield ready at the door' : 'At MAX, with both parts, it makes the heat shield for the rocket'}</span>`,
+    cost: () => { const base = P.hut.levels[hut.level + 1]; if (!base) return null; const left = {}; for (const [m, n] of Object.entries(base)) left[m] = n - (hut.paid[m] || 0); return left; },
+    pay: (m) => { hut.paid[m] = (hut.paid[m] || 0) + 1; },
+    complete: () => {
+      hut.paid = {}; hut.level++; sfx.build();
+      if (hutMax() && hut.parts < 2) toast(`Hut at MAX. It's waiting for shield parts (${hut.parts}/2): find the lost astronauts.`, true);
+      else if (!hutMax()) toast(hut.level === 0 ? 'Hut repaired! Upgrade it to MAX to make the heat shield.' : 'Hut upgraded', true);
+      hutCheckShield();
+      refreshHut();
+    },
+  });
+}
+function updateHut(t) {
+  if (!hut) return;
+  if (hut.shieldModel.visible) { hut.shieldModel.position.y = 1.1 + Math.sin(t * 2.5) * 0.12; hut.shieldModel.rotation.z = t; }
+  if (hut.shield && !hut.taken && Math.hypot(P.hut.x - player.x, P.hut.z + 2.1 - player.z) < 1.6 && bagRoom() > 0) {
+    hut.taken = true; toBag('heatShield', hut.shieldModel.position.clone()); refreshHut();
+    toast('Heat shield in your bag: bring it to the rocket', true);
+  }
+}
+
+// ------------------------------------------------------------------ retired materials
+// When nothing left on the planet needs a raw material (no sign, upgrade, rocket part, or a
+// machine whose product is still needed), it retires: no more pickups, crew switch jobs, and
+// the shed recycles it.
+function costLeft(cost, paid, add) { if (cost) for (const [m, n] of Object.entries(cost)) if (n - ((paid && paid[m]) || 0) > 0) add(m); }
+function computeRetired() {
+  const need = new Set(), add = (m) => need.add(m);
+  for (const g of gens) { if (g.level < 0) costLeft(g.build, g.paid, add); for (let k = Math.max(0, g.level); k < g.costs.length; k++) costLeft(g.costs[k], k === g.level ? g.paid : null, add); }
+  for (const b of bridges) if (!b.repaired) costLeft(b.def.cost, b.paid, add);
+  for (const e of extractors) { if (e.level < 0) costLeft(e.build, e.paid, add); for (let k = Math.max(0, e.level); k < e.costs.length; k++) costLeft(e.costs[k], null, add); }
+  for (const r of refiners) { if (!r.repaired) costLeft(r.repair, r.paid, add); for (let k = r.level; k < r.upgrades.length; k++) costLeft(r.upgrades[k], k === r.level ? r.upPaid : null, add); }
+  for (let k = shed.level + 1; k < P.shed.levels.length; k++) costLeft(P.shed.levels[k].cost, k === shed.level + 1 ? shed.paid : null, add);
+  for (const [key, u] of Object.entries(UPGRADES)) for (let k = tools[key]; k < u.costs.length; k++) costLeft(u.costs[k], k === tools[key] ? toolPaid[key] : null, add);
+  if (!rocket.done) costLeft(P.rocket.cost, rocket.paid, add);
+  if (hut) for (let k = hut.level + 1; k < P.hut.levels.length; k++) costLeft(P.hut.levels[k], k === hut.level + 1 ? hut.paid : null, add);
+  // a machine's inputs are needed for as long as its product is
+  for (let pass = 0; pass < 3; pass++) for (const r of refiners) if (need.has(r.output)) for (const m of Object.keys(r.inputs)) need.add(m);
+  for (const m of P.materials) if (!need.has(m) && !retired.has(m)) {
+    retired.add(m); hudDirty = true; if (shed.open) renderShed();
+    if (playing) toast(`${MATERIALS[m].name} isn't needed any more. Recycle what's left at the shed.`, true);
+  }
+}
+let retireT = 0;
 
 // ------------------------------------------------------------------ the planet map (discovery)
 // A grid of 2x2 squares over the planet. Squares near you (and near exploring crew) become
@@ -1507,6 +1700,7 @@ function drawMap() {
     if (shape === 'circle') g.arc(0, 0, R, 0, Math.PI * 2);
     else if (shape === 'square') g.rect(-R, -R, R * 2, R * 2);
     else if (shape === 'bar') g.rect(-R * 0.55, -R * 1.5, R * 1.1, R * 3);
+    else if (shape === 'house') { g.moveTo(0, -R * 1.3); g.lineTo(R, -R * 0.2); g.lineTo(R, R); g.lineTo(-R, R); g.lineTo(-R, -R * 0.2); g.closePath(); }
     else { g.moveTo(0, -R * 1.3); g.lineTo(R * 1.15, R); g.lineTo(-R * 1.15, R); g.closePath(); }
     g.fill(); g.stroke(); g.restore();
   };
@@ -1517,6 +1711,7 @@ function drawMap() {
   mark(P.workbench.x, P.workbench.z, 'square', Object.keys(UPGRADES).every((k) => !UPGRADES[k].costs[tools[k]]));
   for (const br of bridges) mark(br.def.at[0], br.def.at[1], 'bar', br.repaired, Math.atan2(br.tz, br.tx));
   mark(P.rocket.x, P.rocket.z, 'tri', rocket.done);
+  if (hut) mark(P.hut.x, P.hut.z, 'house', hutMax());
   // you: a blue dot
   g.fillStyle = '#3d8bff'; g.strokeStyle = '#fff'; g.lineWidth = 2.5 * dpr;
   g.beginPath(); g.arc(px(player.x), pz(player.z), 6.5 * dpr, 0, Math.PI * 2); g.fill(); g.stroke();
@@ -1553,21 +1748,22 @@ function animatePlayer(dt, t) {
 // ------------------------------------------------------------------ save / load
 function save() {
   const d = {
-    v: 2, x: player.x, z: player.z, bag, tools, skills, rescued, badge,
+    v: 3, x: player.x, z: player.z, bag, tools, skills, rescued, badge,
     gens: gens.map((g) => ({ level: g.level, paid: g.paid })),
     ex: extractors.map((e) => ({ level: e.level, stored: e.stored, paid: e.paid })),
     bridges: bridges.map((b) => ({ repaired: b.repaired, paid: b.paid })),
     refiners: refiners.map((r) => ({ repaired: r.repaired, paid: r.paid, loaded: r.loaded, out: r.out, t: r.t, level: r.level, upPaid: r.upPaid })),
     rocket: { paid: rocket.paid, done: rocket.done, launched: rocket.launched },
-    lost: lost.map((a) => ({ state: a.state === 'following' ? 'waiting' : a.state, jobIdx: a.jobIdx, x: a.x, z: a.z })),
+    lost: lost.map((a) => ({ state: a.state === 'following' ? 'waiting' : a.state, job: a.job, name: a.name, x: a.x, z: a.z, carryPart: !!a.carryPart })),
     shed: { level: shed.level, paid: shed.paid, store: shed.store }, toolPaid, seen: packSeen(),
+    hut: hut ? { level: hut.level, paid: hut.paid, shield: hut.shield, taken: hut.taken, parts: hut.parts } : null,
   };
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(d)); } catch (e) {}
 }
 function load() {
   let d = null;
   try { d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) {}
-  if (!d || d.v !== 2) return false;
+  if (!d || d.v !== 3) return false;
   player.x = d.x; player.z = d.z;
   Object.assign(bag, d.bag); Object.assign(tools, d.tools); Object.assign(skills, d.skills);
   rescued = d.rescued || 0; badge = !!d.badge;
@@ -1579,9 +1775,10 @@ function load() {
   if (d.shed) { shed.level = d.shed.level; shed.paid = d.shed.paid || {}; Object.assign(shed.store, d.shed.store || {}); refreshShed(); }
   if (d.toolPaid) Object.assign(toolPaid, d.toolPaid);
   if (d.seen) unpackSeen(d.seen);
+  if (hut && d.hut) { Object.assign(hut, { level: d.hut.level, paid: d.hut.paid || {}, shield: !!d.hut.shield, taken: !!d.hut.taken, parts: d.hut.parts || 0 }); }
   d.lost.forEach((s, i) => {
     const a = lost[i]; if (!a) return;
-    if (s.state === 'rescued') { a.state = 'rescued'; a.dome.visible = false; a.home = homeSpot(a.i); a.x = s.x ?? a.home.x; a.z = s.z ?? a.home.z; assignJob(a, s.jobIdx || 0); }
+    if (s.state === 'rescued') { a.state = 'rescued'; a.dome.visible = false; a.home = homeSpot(a.i); a.x = s.x ?? a.home.x; a.z = s.z ?? a.home.z; if (s.name) a.name = s.name; assignJob(a, s.job); a.carryPart = !!s.carryPart; }
   });
   return true;
 }
@@ -1591,6 +1788,7 @@ addEventListener('pagehide', () => { if (playing) save(); });
 // ------------------------------------------------------------------ boarding: a 10-second countdown while
 // you and the crew walk to the rocket and climb in through a hatch on its far side
 let boarding = null;
+let aboard = [], stayers = [];   // who flies on with you, and who stays to live in the hut
 const countEl = document.getElementById('countdown');
 function startBoarding() {
   if (boarding || rocket.launching) return;
@@ -1599,9 +1797,15 @@ function startBoarding() {
   const R = P.rocket, walkers = [];
   const hatch = { x: R.x, z: R.z - 1.7 };     // behind the rocket, out of sight
   const pathFrom = (x, z) => { const side = x >= R.x ? 1 : -1; return [{ x: R.x + side * 3.0, z: R.z - 0.2 }, { x: R.x + side * 1.2, z: R.z - 1.6 }, hatch]; };
+  // the rocket takes you and two crew; on planets with a hut, two others stay behind (a random pick)
+  const crew = lost.filter((a) => a.state === 'rescued' || a.state === 'following');
+  const shuffled = crew.slice().sort(() => Math.random() - 0.5);
+  aboard = hut ? shuffled.slice(0, 2) : shuffled;
+  stayers = hut ? shuffled.slice(2) : [];
+  stayers.forEach((a, k) => { a.el.classList.add('gone'); a.stay = { x: P.hut.x - 1 + k * 2, z: P.hut.z + 3.2 }; });
   let i = 0;
   for (const a of lost) {
-    if (a.state !== 'rescued' && a.state !== 'following') continue;
+    if (!aboard.includes(a)) continue;
     // far-away crew come in from just off screen
     const dx = a.x - R.x, dz = a.z - R.z, d = Math.hypot(dx, dz);
     if (d > 15) { a.x = R.x + (dx / d) * 15; a.z = R.z + (dz / d) * 15; }
@@ -1612,6 +1816,17 @@ function startBoarding() {
   walkers.push({ who: 'player', delay: Math.max(2.5, 0.3 + i * 0.55 + 0.6), path: pathFrom(player.x, player.z), step: 0, inside: false });
   boarding = { t: 0, shown: 11, walkers };
   sfx.level();
+}
+function walkCrew(a, tx, tz, dt, t, speed) {
+  const dx = tx - a.x, dz = tz - a.z, d = Math.hypot(dx, dz), u = a.m.userData;
+  if (d > 0.1) {
+    const sp = Math.min(d, speed * dt); a.x += (dx / d) * sp; a.z += (dz / d) * sp;
+    a.m.rotation.y = Math.atan2(dx, dz);
+    a.m.position.set(a.x, Math.abs(Math.sin(t * 9 + a.i)) * 0.08, a.z);
+    u.legL.rotation.x = Math.sin(t * 10 + a.i) * 0.6; u.legR.rotation.x = -u.legL.rotation.x;
+  } else { u.legL.rotation.x = u.legR.rotation.x = 0; a.m.position.set(a.x, 0, a.z); a.m.rotation.y = Math.PI; }
+  u.arm.rotation.x = 0;
+  return d <= 0.1;
 }
 function updateBoarding(dt, t) {
   const b = boarding;
@@ -1637,6 +1852,7 @@ function updateBoarding(dt, t) {
       u.legL.rotation.x = Math.sin(t * 10 + a.i) * 0.6; u.legR.rotation.x = -u.legL.rotation.x; u.arm.rotation.x = 0;
     }
   }
+  for (const a of stayers) walkCrew(a, a.stay.x, a.stay.z, dt, t, 4.5);
   if (b.t >= 10) {
     for (const w of b.walkers) { (w.who === 'player' ? player.model : w.who.m).visible = false; }
     countEl.classList.add('gone');
@@ -1657,10 +1873,14 @@ function launch() {
   setTimeout(() => {
     document.getElementById('win-title').textContent = badge ? 'Planet restored!' : 'Lift off!';
     document.getElementById('win-badge').classList.toggle('gone', !badge);
-    document.getElementById('win-stats').textContent = `${badge ? 100 : pctAlive()}% of the planet alive · ${rescued}/${lost.length} astronauts rescued`;
-    document.getElementById('win-text').textContent = badge
-      ? 'Every corner of the planet is alive again. You earned the gold planet badge.'
-      : 'You flew home. You can come back and bring the rest of the planet to life for the gold badge.';
+    document.getElementById('win-stats').textContent = `${P.name}: ${badge ? 100 : pctAlive()}% alive · ${explored()}% explored · ${newLost.filter((a) => a.state === 'rescued').length}/${newLost.length} astronauts rescued`;
+    const crewNames = aboard.map((a) => a.name).join(' and ');
+    const stayNames = stayers.map((a) => a.name).join(' and ');
+    document.getElementById('win-text').textContent = (badge
+      ? `Every corner of ${P.name} is alive again. You earned the gold planet badge. `
+      : `You can come back and bring the rest of ${P.name} to life for the gold badge. `) +
+      (stayNames ? `${stayNames} stayed behind to make a home in the hut. ` : '') +
+      (crewNames ? `${crewNames} ${aboard.length > 1 ? 'are' : 'is'} flying on with you.` : '');
     document.getElementById('win').classList.remove('gone');
   }, 3200);
 }
@@ -1683,8 +1903,10 @@ function checkBadge() {
 const startEl = document.getElementById('start');
 let hasSave = false;
 try { hasSave = !!localStorage.getItem(SAVE_KEY); } catch (e) {}
-document.getElementById('go').textContent = hasSave ? 'Continue' : 'Start';
-if (hasSave) { document.getElementById('fresh').classList.remove('gone'); }
+document.getElementById('go').textContent = hasSave || game.planet > 0 ? 'Continue' : 'Start';
+document.querySelector('.maphead b').textContent = P.name;
+if (game.planet > 0) document.getElementById('intro').textContent = `Planet ${game.planet + 1}: ${P.name}. A new dead world, two more lost astronauts, and a hut that needs fixing. Your crew came with you.`;
+if (hasSave || game.planet > 0) { document.getElementById('fresh').classList.remove('gone'); }
 function begin() {
   sfx.init();
   const el = document.documentElement, req = el.requestFullscreen || el.webkitRequestFullscreen;
@@ -1696,12 +1918,25 @@ function begin() {
   if (!hasSave) toast('Your bubble keeps you alive. Gather wood and stone to make it grow!', true);
 }
 document.getElementById('go').addEventListener('click', begin);
-document.getElementById('fresh').addEventListener('click', () => { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} location.reload(); });
+document.getElementById('fresh').addEventListener('click', startOver);
+document.getElementById('next').addEventListener('click', () => {
+  // on to a brand new planet: your crew aboard, your tools and skills come too
+  const flying = aboard.length ? aboard : lost.filter((a) => a.state === 'rescued').slice(0, 2);
+  const next = { planet: game.planet + 1, seed: Math.floor(Math.random() * 1e9), crew: flying.map((a) => ({ name: a.name, color: a.color })), tools: { ...tools }, skills: { ...skills } };
+  try { localStorage.setItem(GAME_KEY, JSON.stringify(next)); localStorage.removeItem(SAVE_KEY); } catch (e) {}
+  location.reload();
+});
+function startOver() {
+  try { for (const k of Object.keys(localStorage)) if (k.startsWith('bloom-save') || k === GAME_KEY) localStorage.removeItem(k); } catch (e) {}
+  location.reload();
+}
+document.getElementById('restart').addEventListener('click', startOver);
 document.getElementById('again').addEventListener('click', () => {
   document.getElementById('win').classList.add('gone'); playing = true; rocket.model.position.y = 0; rocket.model.userData.flame.visible = false; rocket.launching = 0;
   // everyone climbs back out
   player.x = P.rocket.x; player.z = P.rocket.z + 3.4; player.model.visible = true;
   lost.forEach((a, i) => { if (a.state === 'rescued' || a.state === 'following') { a.m.visible = true; a.x = P.rocket.x - 4 + (i % 4) * 2.2; a.z = P.rocket.z + 5 + Math.floor(i / 4) * 1.8; } });
+  stayers = []; aboard = [];
   updateCamera(0, true);
   toast('Welcome back. The rocket is ready whenever you are.');
 });
@@ -1713,7 +1948,14 @@ muteBtn.addEventListener('click', () => { sfx.init(); sfx.toggle(); muteBtn.clas
 function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize);
 resize();
-load();
+if (!load() && game.planet > 0) {
+  // a new planet: your tools and skills come with you
+  if (game.tools) Object.assign(tools, game.tools);
+  if (game.skills) Object.assign(skills, game.skills);
+  player.air = maxAir();
+}
+refreshHut();
+computeRetired();
 reveal(P.start.x, P.start.z, REVEAL_HOME);
 syncBubbleUniforms(); updateDeco(); restore = computeRestore(); refreshRocket();
 updateCamera(0, true);
@@ -1751,6 +1993,8 @@ function update(dt) {
     updateAir(dt);
     updateLost(dt, t);
     updateDiscovery();
+    updateHut(t);
+    retireT += dt; if (retireT > 2) { retireT = 0; computeRetired(); }
     saveT += dt; if (saveT > 5) { saveT = 0; save(); }
   }
   updateNodes(dt);
@@ -1763,6 +2007,12 @@ function update(dt) {
     const lt = rocket.launching;
     rocket.model.position.y = lt < 1 ? Math.sin(lt * 40) * 0.05 : (lt - 1) * (lt - 1) * 6;
     rocket.model.userData.flame.scale.set(1, 1 + Math.sin(t * 30) * 0.2, 1);
+    // the two who stay wave, then walk into their new home
+    for (const a of stayers) {
+      if (!a.m.visible) continue;
+      if (lt < 1.4) { a.m.rotation.y = Math.atan2(P.rocket.x - a.x, P.rocket.z - a.z); a.m.userData.arm.rotation.x = -2.6 + Math.sin(t * 8) * 0.4; }
+      else if (walkCrew(a, P.hut.x, P.hut.z + 1.2, dt, t, 2.2)) a.m.visible = false;
+    }
   }
   animatePlayer(dt, t);
   updateCamera(dt);
@@ -1771,6 +2021,6 @@ function update(dt) {
 requestAnimationFrame(frame);
 
 // hooks for automated playtesting
-window.__bloom = { step: (n) => { for (let i = 0; i < n; i++) update(1 / 30); }, player, bag, tools, gens, nodes, sites, extractors, bridges, refiners, rocket, lost, launch, startBoarding, get boarding() { return boarding; }, shed, openMap, closeMap, get explored() { return explored(); }, reveal, get restore() { return restore; }, begin, give: (m, n) => { bag[m] = (bag[m] || 0) + n; hudDirty = true; } };
+window.__bloom = { step: (n) => { for (let i = 0; i < n; i++) update(1 / 30); }, player, bag, tools, gens, nodes, sites, extractors, bridges, refiners, rocket, lost, launch, startBoarding, hut, retired, game, P, computeRetired, get aboard() { return aboard; }, get stayers() { return stayers; }, get boarding() { return boarding; }, shed, openMap, closeMap, get explored() { return explored(); }, reveal, get restore() { return restore; }, begin, give: (m, n) => { bag[m] = (bag[m] || 0) + n; hudDirty = true; } };
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
