@@ -257,3 +257,20 @@ Generated planets (planetgen.js)
 - Crew wear the suit colour of the planet they were lost on.
 - Your tools and skills come with you to each new planet.
 Still to come: the relic (a hidden carry-over item), Todd is designing it.
+
+v9 — never stuck, calmer crew, readable messages, smooth travel
+- Out of air: the suit now only lands you somewhere you can stand: inside a
+  bubble, not in a river (unless on a bridge), not inside a machine, rock,
+  tree or anything solid. If you're ever somewhere you can't walk out of
+  (an old save in the river, for example), the game moves you to the
+  nearest safe spot when it loads, and checks again every couple of seconds.
+- Crew only fill each raw shelf to 30 of its 50, so there's always room for
+  what you carry, and they work about half as fast (2.6 s per swing).
+  Explorer finds follow the same 30 limit.
+- Messages stay up longer the more text they have (about 2.6 s for short
+  ones, up to 7 s; the rescue message is about 6.5 s). No log.
+- Flying to the next planet: a starfield "Flying to <name>..." covers the
+  reload, the new planet opens straight into the game ("Arriving at...",
+  then a welcome message) with no start screen, and the installed app no
+  longer re-asks for full screen (the cause of the flicker). New planets
+  never reuse a name you've already visited.

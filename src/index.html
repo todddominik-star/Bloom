@@ -108,11 +108,20 @@
   #countdown { position: fixed; left: 0; top: 0; font-size: 64px; font-weight: 900; color: #fff; -webkit-text-stroke: 4px #14244a; paint-order: stroke fill; pointer-events: none; transition: opacity .2s; }
   #countdown.tick { animation: tick .9s ease-out; }
   @keyframes tick { 0% { transform-origin: center; scale: 1.5; } 100% { scale: 1; } }
-  @media (prefers-reduced-motion: reduce) { .help { animation: none; } #countdown.tick { animation: none; } }
+  #travel { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: radial-gradient(circle at 50% 60%, #1d2f66, #070b1c 70%); color: #fff; transition: opacity .9s; }
+  #travel.fade { opacity: 0; }
+  /* arriving at a new planet: from the very first frame, show the travel screen, not the start screen */
+  html.traveling #start { opacity: 0 !important; pointer-events: none !important; }
+  html.traveling #travel.gone { opacity: 1 !important; }
+  #travel .stars { position: absolute; inset: 0; background-image: radial-gradient(1.5px 1.5px at 20% 30%, #fff, transparent), radial-gradient(1px 1px at 70% 20%, #cfe6ff, transparent), radial-gradient(1.5px 1.5px at 40% 80%, #fff, transparent), radial-gradient(1px 1px at 85% 65%, #fff, transparent), radial-gradient(1px 1px at 10% 70%, #ffe7b0, transparent), radial-gradient(1.5px 1.5px at 60% 50%, #fff, transparent); background-size: 180px 180px; animation: warp 1.2s linear infinite; opacity: .9; }
+  @keyframes warp { from { background-position: 0 0; } to { background-position: 0 180px; } }
+  #travel-to { position: relative; font-size: 24px; font-weight: 900; letter-spacing: .5px; text-shadow: 0 2px 12px #3d8bff; }
+  @media (prefers-reduced-motion: reduce) { .help { animation: none; } #countdown.tick { animation: none; } #travel .stars { animation: none; } }
   .legal { margin-top: 18px; font-size: 11px; line-height: 1.5; opacity: .6; text-align: center; }
 </style>
 </head>
 <body>
+<script>try { if (sessionStorage.getItem('bloom-travel')) document.documentElement.classList.add('traveling'); } catch (e) {}</script>
 <canvas id="game"></canvas>
 <div id="sites"></div>
 <div id="air" class="gone"></div>
@@ -137,6 +146,7 @@
   <div class="mapnote">Red: not finished yet · Green: MAX</div>
 </div></div>
 <div id="countdown" class="gone"></div>
+<div id="travel" class="gone"><div class="stars"></div><div id="travel-to"></div></div>
 <button id="launch" class="big gone">Launch</button>
 <div id="toast" class="gone"></div>
 <div id="hint" class="gone">Press and pull to walk</div>

@@ -1100,7 +1100,7 @@ function movePlayer(dt) {
     // out of air: the suit floats you gently back to the nearest bubble
     const t = player.target;
     const dx = t.x - player.x, dz = t.z - player.z, d = Math.hypot(dx, dz);
-    if (d < 0.3 || aliveAt(player.x, player.z) > 0.8) { player.floating = false; toast('Safe inside the bubble. Your bag is just as you left it.'); return; }
+    if (d < 0.3 || (aliveAt(player.x, player.z) > 0.8 && canStand(player.x, player.z))) { player.floating = false; unstick(); toast('Safe inside the bubble. Your bag is just as you left it.'); return; }
     player.x += (dx / d) * FLOAT_HOME * dt; player.z += (dz / d) * FLOAT_HOME * dt;
     player.face = Math.atan2(dx, dz);
     return;
@@ -1120,15 +1120,32 @@ function movePlayer(dt) {
   resolveColliders();
   player.moving = f > 0;
 }
-function nearestBubblePoint() {
-  let best = null, bd = Infinity;
-  for (const g of gens) {
-    if (g.level < 0) continue;
-    const dx = player.x - g.x, dz = player.z - g.z, d = Math.hypot(dx, dz) || 1;
-    const edge = d - g.r;
-    if (edge < bd) { bd = edge; const k = Math.max(0, g.r - 2) / d; best = { x: g.x + dx * k, z: g.z + dz * k }; }
+// somewhere you can stand: not in a river (unless on a bridge), not inside a machine, rock,
+// tree or anything else solid, and inside the planet
+function canStand(x, z) {
+  if (blocked(x, z)) return false;
+  for (const c of colliders) { if (!c.r || (c.hp !== undefined && c.hp <= 0)) continue; if (Math.hypot(x - c.x, z - c.z) < c.r + 0.6) return false; }
+  for (const n of nodes) if (n.hp > 0 && Math.hypot(x - n.x, z - n.z) < n.r + 0.6) return false;
+  return true;
+}
+// the closest safe spot to (x, z); inBubble: it must also be well inside a bubble
+function findSafe(x, z, inBubble) {
+  const ok = (px, pz) => canStand(px, pz) && (!inBubble || aliveAt(px, pz) > 0.8);
+  if (ok(x, z)) return { x, z };
+  for (let r = 1; r < 140; r += 1) {
+    const steps = Math.max(12, Math.round(r * 3));
+    for (let k = 0; k < steps; k++) { const a = (k / steps) * Math.PI * 2, px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r; if (ok(px, pz)) return { x: px, z: pz }; }
   }
-  return best;
+  return null;
+}
+// out of air: the nearest safe spot inside a bubble
+function nearestBubblePoint() { return findSafe(player.x, player.z, true); }
+// never leave you somewhere you can't walk out of (a river, inside a rock...)
+function unstick() {
+  if (canStand(player.x, player.z)) return false;
+  const p = findSafe(player.x, player.z, false);
+  if (p) { player.x = p.x; player.z = p.z; return true; }
+  return false;
 }
 
 // ------------------------------------------------------------------ gathering
@@ -1291,7 +1308,11 @@ function updateAir(dt) {
 // ---- crew: rescued astronauts get a job. Gatherers bring one material to the shed;
 // explorers wander the dead zone and come back with surprises.
 const CREW_NAMES = ['Ava', 'Kai', 'Mira', 'Leo', 'Juno', 'Theo', 'Nova', 'Remy'];
-const CREW_SPEED = 4.2, EXPLORE_SPEED = 3.0, CARRY = 5;
+const CREW_SPEED = 4.2, EXPLORE_SPEED = 3.0, CARRY = 5, CREW_HIT = 2.6;
+// the crew only fill a raw shelf to 30 of its 50, so there's always room for what you carry
+const CREW_SHELF = 30;
+const crewFull = (m) => shedFull(m) || (MATERIALS[m].stage === 0 && (shed.store[m] || 0) >= CREW_SHELF);
+const crewPut = (m, n) => shedPut(m, MATERIALS[m].stage === 0 ? Math.min(n, Math.max(0, CREW_SHELF - (shed.store[m] || 0))) : n);
 // gatherers take the planet's raw materials in order (A, B, C, D), skipping ones that are no
 // longer needed or that someone else already gathers. On later planets the 4th crew member explores.
 function nextGatherMat(a) {
@@ -1370,7 +1391,7 @@ function crewWork(a, dt, t) {
       const m = nextGatherMat(a);
       if (m) { a.job = { type: 'gather', mat: m }; crewLabel(a); if (Math.hypot(a.x - player.x, a.z - player.z) < 40) toast(`${a.name} switched to ${MATERIALS[m].name.toLowerCase()}`); }
       else { a.job = { type: 'explore' }; a.exploring = true; crewLabel(a); }
-    } else if (a.task === 'find' && shedFull(a.job.mat)) {
+    } else if (a.task === 'find' && crewFull(a.job.mat)) {
       // the shed has all it can hold of this: go exploring until there's room again
       a.exploring = true; a.task = 'find'; crewLabel(a);
     } else if (a.task === 'find') {
@@ -1393,7 +1414,7 @@ function crewWork(a, dt, t) {
       a.working = true;
       a.m.rotation.y = Math.atan2(n.x - a.x, n.z - a.z);
       a.t += dt;
-      if (a.t > 1.3) {
+      if (a.t > CREW_HIT) {
         a.t = 0;
         if (n.hp > 0) { n.hp--; n.shake = 1; a.carry++; if (n.hp <= 0) n.regrow = REGROW; }
         if (a.carry >= CARRY || n.hp <= 0) { n.claim = null; a.task = 'return'; a.dest = shedPad(); }
@@ -1401,7 +1422,7 @@ function crewWork(a, dt, t) {
     } else if (a.task === 'return') {
       if (!a.dest) a.dest = shedPad();
       if (crewGo(a, a.dest.x, a.dest.z, dt)) {
-        const put = shedPut(a.job.mat, a.carry);
+        const put = crewPut(a.job.mat, a.carry);
         a.carry -= put; a.dest = null;
         a.task = a.carry > 0 ? 'full' : 'find';
       }
@@ -1430,7 +1451,7 @@ function crewWork(a, dt, t) {
         // finds: a little raw material the shed still has room for, sometimes a refined item,
         // rarely a manufactured one (a little more often when the raw shelves are full)
         const found = {};
-        const roomy = P.materials.filter((m) => !shedFull(m) && !retired.has(m));
+        const roomy = P.materials.filter((m) => !crewFull(m) && !retired.has(m));
         const picks = roomy.sort(() => Math.random() - 0.5).slice(0, 2);
         for (const m of picks) found[m] = 2 + Math.floor(Math.random() * 3);
         const rawFull = roomy.length === 0;
@@ -1438,7 +1459,7 @@ function crewWork(a, dt, t) {
         if (refinedIds.length && Math.random() < (rawFull ? 0.12 : 0.08)) found[refinedIds[Math.floor(Math.random() * refinedIds.length)]] = 1;
         if (madeIds.length && Math.random() < (rawFull ? 0.02 : 0.01)) found[madeIds.filter((m) => !MATERIALS[m].special)[0]] = 1;
         const kept = [];
-        for (const [m, n] of Object.entries(found)) { const k = shedPut(m, n); if (k) kept.push(`${k} ${MATERIALS[m].name.toLowerCase()}`); }
+        for (const [m, n] of Object.entries(found)) { const k = crewPut(m, n); if (k) kept.push(`${k} ${MATERIALS[m].name.toLowerCase()}`); }
         if (kept.length && Math.hypot(a.x - player.x, a.z - player.z) < 40) toast(`${a.name} brought back ${kept.join(', ')}`);
         a.task = 'rest'; a.t = 0;
       }
@@ -1447,7 +1468,7 @@ function crewWork(a, dt, t) {
       if (a.t > 6) {
         a.task = 'find';
         // a gatherer goes back to work once the shed has room for their material again
-        if (a.job.type === 'gather' && !shedFull(a.job.mat) && !retired.has(a.job.mat)) { a.exploring = false; crewLabel(a); }
+        if (a.job.type === 'gather' && !crewFull(a.job.mat) && !retired.has(a.job.mat)) { a.exploring = false; crewLabel(a); }
       }
     }
   }
@@ -1511,7 +1532,8 @@ let toastTimer = 0;
 const toastEl = document.getElementById('toast');
 function toast(text, good = false) {
   toastEl.textContent = text; toastEl.classList.toggle('good', good); toastEl.classList.remove('gone');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.add('gone'), 2600);
+  const ms = Math.min(7000, Math.max(2600, 1500 + text.length * 30)); // longer messages stay up longer
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.add('gone'), ms);
 }
 const v3 = new THREE.Vector3();
 function project(x, y, z) { v3.set(x, y, z).project(camera); return [(v3.x * 0.5 + 0.5) * innerWidth, (-v3.y * 0.5 + 0.5) * innerHeight, v3.z]; }
@@ -1907,10 +1929,17 @@ document.getElementById('go').textContent = hasSave || game.planet > 0 ? 'Contin
 document.querySelector('.maphead b').textContent = P.name;
 if (game.planet > 0) document.getElementById('intro').textContent = `Planet ${game.planet + 1}: ${P.name}. A new dead world, two more lost astronauts, and a hut that needs fixing. Your crew came with you.`;
 if (hasSave || game.planet > 0) { document.getElementById('fresh').classList.remove('gone'); }
+function showTravel(name) {
+  const t = document.getElementById('travel');
+  document.getElementById('travel-to').textContent = `Flying to ${name}…`;
+  t.classList.remove('gone');
+}
+// the installed app is already full screen: asking again makes the phone flicker
+const installed = matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: standalone)').matches || navigator.standalone;
 function begin() {
   sfx.init();
   const el = document.documentElement, req = el.requestFullscreen || el.webkitRequestFullscreen;
-  if (req && !document.fullscreenElement) { try { const p = req.call(el, { navigationUI: 'hide' }); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
+  if (req && !document.fullscreenElement && !installed) { try { const p = req.call(el, { navigationUI: 'hide' }); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
   startEl.classList.add('gone');
   playing = true;
   let hinted = false; try { hinted = localStorage.getItem('bloom-hinted') === '1'; localStorage.setItem('bloom-hinted', '1'); } catch (e) {}
@@ -1918,13 +1947,27 @@ function begin() {
   if (!hasSave) toast('Your bubble keeps you alive. Gather wood and stone to make it grow!', true);
 }
 document.getElementById('go').addEventListener('click', begin);
+// arriving at a new planet: keep the travel screen up a moment, then land straight in the game
+let arriving = null; try { arriving = sessionStorage.getItem('bloom-travel'); sessionStorage.removeItem('bloom-travel'); } catch (e) {}
+if (arriving) {
+  showTravel(arriving);
+  document.getElementById('travel-to').textContent = `Arriving at ${P.name}`;
+  startEl.classList.add('gone');
+  setTimeout(() => { begin(); toast(`Welcome to ${P.name}. Find the two lost astronauts and fix the hut by the rocket.`, true); document.documentElement.classList.remove('traveling'); document.getElementById('travel').classList.add('fade'); setTimeout(() => document.getElementById('travel').classList.add('gone'), 900); }, 1300);
+}
 document.getElementById('fresh').addEventListener('click', startOver);
 document.getElementById('next').addEventListener('click', () => {
   // on to a brand new planet: your crew aboard, your tools and skills come too
   const flying = aboard.length ? aboard : lost.filter((a) => a.state === 'rescued').slice(0, 2);
-  const next = { planet: game.planet + 1, seed: Math.floor(Math.random() * 1e9), crew: flying.map((a) => ({ name: a.name, color: a.color })), tools: { ...tools }, skills: { ...skills } };
+  // a new seed whose planet name you haven't visited yet
+  const visited = [...(game.visited || []), P.name];
+  let seed = Math.floor(Math.random() * 1e9), name = generatePlanet(seed, game.planet + 1).name;
+  for (let k = 0; k < 20 && visited.includes(name); k++) { seed = Math.floor(Math.random() * 1e9); name = generatePlanet(seed, game.planet + 1).name; }
+  const next = { planet: game.planet + 1, seed, crew: flying.map((a) => ({ name: a.name, color: a.color })), tools: { ...tools }, skills: { ...skills }, visited };
   try { localStorage.setItem(GAME_KEY, JSON.stringify(next)); localStorage.removeItem(SAVE_KEY); } catch (e) {}
-  location.reload();
+  try { sessionStorage.setItem('bloom-travel', name); } catch (e) {}
+  showTravel(name);
+  setTimeout(() => location.reload(), 1400);
 });
 function startOver() {
   try { for (const k of Object.keys(localStorage)) if (k.startsWith('bloom-save') || k === GAME_KEY) localStorage.removeItem(k); } catch (e) {}
@@ -1956,6 +1999,7 @@ if (!load() && game.planet > 0) {
 }
 refreshHut();
 computeRetired();
+if (unstick()) setTimeout(() => toast('Your suit found you a safe spot to stand.'), 1200);
 reveal(P.start.x, P.start.z, REVEAL_HOME);
 syncBubbleUniforms(); updateDeco(); restore = computeRestore(); refreshRocket();
 updateCamera(0, true);
@@ -1994,7 +2038,7 @@ function update(dt) {
     updateLost(dt, t);
     updateDiscovery();
     updateHut(t);
-    retireT += dt; if (retireT > 2) { retireT = 0; computeRetired(); }
+    retireT += dt; if (retireT > 2) { retireT = 0; computeRetired(); if (!player.floating) unstick(); }
     saveT += dt; if (saveT > 5) { saveT = 0; save(); }
   }
   updateNodes(dt);
@@ -2021,6 +2065,6 @@ function update(dt) {
 requestAnimationFrame(frame);
 
 // hooks for automated playtesting
-window.__bloom = { step: (n) => { for (let i = 0; i < n; i++) update(1 / 30); }, player, bag, tools, gens, nodes, sites, extractors, bridges, refiners, rocket, lost, launch, startBoarding, hut, retired, game, P, computeRetired, get aboard() { return aboard; }, get stayers() { return stayers; }, get boarding() { return boarding; }, shed, openMap, closeMap, get explored() { return explored(); }, reveal, get restore() { return restore; }, begin, give: (m, n) => { bag[m] = (bag[m] || 0) + n; hudDirty = true; } };
+window.__bloom = { step: (n) => { for (let i = 0; i < n; i++) update(1 / 30); }, player, bag, tools, gens, nodes, sites, extractors, bridges, refiners, rocket, lost, launch, startBoarding, canStand, save, hut, retired, game, P, computeRetired, get aboard() { return aboard; }, get stayers() { return stayers; }, get boarding() { return boarding; }, shed, openMap, closeMap, get explored() { return explored(); }, reveal, get restore() { return restore; }, begin, give: (m, n) => { bag[m] = (bag[m] || 0) + n; hudDirty = true; } };
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
