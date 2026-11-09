@@ -1,7 +1,7 @@
 import * as esbuild from 'esbuild';
 import fs from 'fs';
 // release number: goes up by one every time a new version is published. That's all it means.
-const VERSION = 9;
+const VERSION = 10;
 const DATE = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 const r = await esbuild.build({ entryPoints: ['src/main.js'], bundle: true, minify: true, format: 'iife', write: false, target: 'es2019' });
 const js = r.outputFiles[0].text.replace(/<\/script/g, '<\\/script');

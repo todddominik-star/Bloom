@@ -274,3 +274,13 @@ v9 — never stuck, calmer crew, readable messages, smooth travel
   then a welcome message) with no start screen, and the installed app no
   longer re-asks for full screen (the cause of the flicker). New planets
   never reuse a name you've already visited.
+
+v10 — no more jerking while you work
+- The "are you stuck?" check ran every couple of seconds and counted standing
+  right next to a stone you were mining as stuck, so it nudged you away.
+  Now it only runs when a float-home lands you and once when a save loads,
+  and only acts if you're truly stuck (in a river with no bridge, or right
+  inside something solid). Test: 30 s mining beside a tree, zero movement.
+- [Todd] tip: don't pick up the heat shield until the rocket is ready for
+  it, or it just takes a bag slot.
+- Next idea from Todd: more kinds of resources, and new shapes to mine them from.

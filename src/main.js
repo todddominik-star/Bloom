@@ -1140,9 +1140,17 @@ function findSafe(x, z, inBubble) {
 }
 // out of air: the nearest safe spot inside a bubble
 function nearestBubblePoint() { return findSafe(player.x, player.z, true); }
-// never leave you somewhere you can't walk out of (a river, inside a rock...)
+// truly stuck: in a river with no bridge, or right inside something solid (standing next to a
+// stone you're mining is fine)
+function stuckAt(x, z) {
+  if (blocked(x, z)) return true;
+  for (const c of colliders) { if (!c.r || (c.hp !== undefined && c.hp <= 0)) continue; if (Math.hypot(x - c.x, z - c.z) < c.r - 0.3) return true; }
+  return false;
+}
+// never leave you somewhere you can't walk out of. Only used when a float-home lands you and when
+// a save loads, never while you're walking or working.
 function unstick() {
-  if (canStand(player.x, player.z)) return false;
+  if (!stuckAt(player.x, player.z)) return false;
   const p = findSafe(player.x, player.z, false);
   if (p) { player.x = p.x; player.z = p.z; return true; }
   return false;
@@ -2038,7 +2046,7 @@ function update(dt) {
     updateLost(dt, t);
     updateDiscovery();
     updateHut(t);
-    retireT += dt; if (retireT > 2) { retireT = 0; computeRetired(); if (!player.floating) unstick(); }
+    retireT += dt; if (retireT > 2) { retireT = 0; computeRetired(); }
     saveT += dt; if (saveT > 5) { saveT = 0; save(); }
   }
   updateNodes(dt);
