@@ -839,15 +839,27 @@ function refreshRocket() {
 // --- workbench: four signposts around it, one per upgrade, paid like any other sign
 const bench = makeWorkbench();
 bench.position.set(P.workbench.x, 0, P.workbench.z - 1.5); scene.add(bench);
-colliders.push({ x: P.workbench.x, z: P.workbench.z - 2.5, r: 1.2 });
+const benchCollider = { x: P.workbench.x, z: P.workbench.z - 2.5, r: 1.2 };
+colliders.push(benchCollider);
 const toolPaid = { pick: {}, axe: {}, bag: {}, suit: {} };
+const benchSigns = {};
+const toolMax = (key) => !UPGRADES[key].costs[tools[key]];
+// a maxed tool has nothing left to buy, so its signpost goes; when all four are maxed (often the
+// case on later planets) the workbench itself isn't needed at all
+function refreshBench() {
+  for (const [key, sg] of Object.entries(benchSigns)) sg.visible = !toolMax(key);
+  const all = Object.keys(UPGRADES).every(toolMax);
+  bench.visible = !all; benchCollider.r = all ? 0 : 1.2;
+}
 const BENCH_SIGNS = { pick: [-3.6, 1.2], axe: [-1.25, 2.6], bag: [1.25, 2.6], suit: [3.6, 1.2] };
 for (const [key, [ox, oz]] of Object.entries(BENCH_SIGNS)) {
   const u = UPGRADES[key];
   const sx = P.workbench.x + ox, sz = P.workbench.z + oz;
   const sign = makeSign(); sign.position.set(sx, 0, sz - 0.6); sign.rotation.y = Math.atan2(ox, oz) * 0.3; scene.add(sign);
+  benchSigns[key] = sign;
   addSite({
     x: sx, z: sz, reach: 1.2,
+    hidden: () => toolMax(key),
     title: () => `${u.name}${u.costs[tools[key]] ? ` → ${u.note[tools[key] + 1]}` : `: ${u.note[tools[key]]}`}`,
     cost: () => {
       const base = u.costs[tools[key]];
@@ -863,7 +875,7 @@ for (const [key, [ox, oz]] of Object.entries(BENCH_SIGNS)) {
       if (key === 'suit') player.air = maxAir();
       sfx.build();
       toast(`${u.name} upgraded: ${u.note[tools[key]]}`, true);
-      hudDirty = true;
+      hudDirty = true; refreshBench();
     },
   });
 }
@@ -1463,9 +1475,9 @@ function crewWork(a, dt, t) {
         const picks = roomy.sort(() => Math.random() - 0.5).slice(0, 2);
         for (const m of picks) found[m] = 2 + Math.floor(Math.random() * 3);
         const rawFull = roomy.length === 0;
-        const refinedIds = P.refined.filter((m) => MATERIALS[m].stage === 1), madeIds = P.refined.filter((m) => MATERIALS[m].stage === 2 && !MATERIALS[m].special);
+        const refinedIds = P.refined.filter((m) => MATERIALS[m].stage === 1 && !retired.has(m)), madeIds = P.refined.filter((m) => MATERIALS[m].stage === 2 && !MATERIALS[m].special && !retired.has(m));
         if (refinedIds.length && Math.random() < (rawFull ? 0.12 : 0.08)) found[refinedIds[Math.floor(Math.random() * refinedIds.length)]] = 1;
-        if (madeIds.length && Math.random() < (rawFull ? 0.02 : 0.01)) found[madeIds.filter((m) => !MATERIALS[m].special)[0]] = 1;
+        if (madeIds.length && Math.random() < (rawFull ? 0.02 : 0.01)) found[madeIds[0]] = 1;
         const kept = [];
         for (const [m, n] of Object.entries(found)) { const k = crewPut(m, n); if (k) kept.push(`${k} ${MATERIALS[m].name.toLowerCase()}`); }
         if (kept.length && Math.hypot(a.x - player.x, a.z - player.z) < 40) toast(`${a.name} brought back ${kept.join(', ')}`);
@@ -1647,7 +1659,7 @@ function computeRetired() {
   if (hut) for (let k = hut.level + 1; k < P.hut.levels.length; k++) costLeft(P.hut.levels[k], k === hut.level + 1 ? hut.paid : null, add);
   // a machine's inputs are needed for as long as its product is
   for (let pass = 0; pass < 3; pass++) for (const r of refiners) if (need.has(r.output)) for (const m of Object.keys(r.inputs)) need.add(m);
-  for (const m of P.materials) if (!need.has(m) && !retired.has(m)) {
+  for (const m of [...P.materials, ...P.refined.filter((r) => !MATERIALS[r].special)]) if (!need.has(m) && !retired.has(m)) {
     retired.add(m); hudDirty = true; if (shed.open) renderShed();
     if (playing) toast(`${MATERIALS[m].name} isn't needed any more. Recycle what's left at the shed.`, true);
   }
@@ -1738,7 +1750,7 @@ function drawMap() {
   for (const rf of refiners) mark(rf.x, rf.z, 'square', rf.repaired && rfMax(rf));
   for (const ex of extractors) mark(ex.x, ex.z, 'square', ex.level >= ex.levels.length - 1);
   mark(P.shed.x, P.shed.z, 'square', shed.level >= P.shed.levels.length - 1);
-  mark(P.workbench.x, P.workbench.z, 'square', Object.keys(UPGRADES).every((k) => !UPGRADES[k].costs[tools[k]]));
+  if (bench.visible) mark(P.workbench.x, P.workbench.z, 'square', false);
   for (const br of bridges) mark(br.def.at[0], br.def.at[1], 'bar', br.repaired, Math.atan2(br.tz, br.tx));
   mark(P.rocket.x, P.rocket.z, 'tri', rocket.done);
   if (hut) mark(P.hut.x, P.hut.z, 'house', hutMax());
@@ -1755,8 +1767,12 @@ function updateCamera(dt, snap) {
   const aspect = innerWidth / innerHeight;
   const dist = aspect < 1 ? 31 : 24;   // portrait phones see a little more
   const k = snap ? 1 : 1 - Math.exp(-dt * 6);
-  camT.x += (player.x - camT.x) * k; camT.z += (player.z - 1.2 - camT.z) * k;
-  camera.position.set(camT.x, dist * 0.82, camT.z + dist * 0.57);
+  // during the countdown and liftoff, frame the rocket and the hut together
+  const launchView = (boarding || rocket.launching) && hut;
+  const fx = launchView ? (P.rocket.x + P.hut.x) / 2 : player.x, fz = launchView ? (P.rocket.z + P.hut.z) / 2 + 1 : player.z - 1.2;
+  const fd = launchView ? dist * 1.25 : dist;
+  camT.x += (fx - camT.x) * k; camT.z += (fz - camT.z) * k;
+  camera.position.set(camT.x, fd * 0.82, camT.z + fd * 0.57);
   camera.lookAt(camT);
   sun.target.position.copy(camT);
   sun.position.copy(camT).addScaledVector(SUN_DIR, 40);
@@ -1935,6 +1951,7 @@ let hasSave = false;
 try { hasSave = !!localStorage.getItem(SAVE_KEY); } catch (e) {}
 document.getElementById('go').textContent = hasSave || game.planet > 0 ? 'Continue' : 'Start';
 document.querySelector('.maphead b').textContent = P.name;
+if (hut) document.getElementById('lg-hut').classList.remove('gone');
 if (game.planet > 0) document.getElementById('intro').textContent = `Planet ${game.planet + 1}: ${P.name}. A new dead world, two more lost astronauts, and a hut that needs fixing. Your crew came with you.`;
 if (hasSave || game.planet > 0) { document.getElementById('fresh').classList.remove('gone'); }
 function showTravel(name) {
@@ -2006,6 +2023,7 @@ if (!load() && game.planet > 0) {
   player.air = maxAir();
 }
 refreshHut();
+refreshBench();
 computeRetired();
 if (unstick()) setTimeout(() => toast('Your suit found you a safe spot to stand.'), 1200);
 reveal(P.start.x, P.start.z, REVEAL_HOME);

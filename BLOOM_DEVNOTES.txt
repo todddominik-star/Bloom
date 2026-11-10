@@ -284,3 +284,16 @@ v10 — no more jerking while you work
 - [Todd] tip: don't pick up the heat shield until the rocket is ready for
   it, or it just takes a bag slot.
 - Next idea from Todd: more kinds of resources, and new shapes to mine them from.
+
+v11 — tidy workbench, everything retires, launch framing, hut in the legend
+- Workbench: a tool at MAX loses its signpost (nothing left to buy). When all
+  four are MAX, the workbench itself disappears (and leaves the map).
+- Retiring now covers refined and manufactured items too (polished crystal,
+  gold bars, power cores): once nothing needs them they're "recycle" at the
+  shed and explorers stop bringing them. The heat shield never retires.
+- Launch: during the countdown and liftoff the camera pulls back and frames
+  the rocket and the hut together, so you see the two who stay walk in.
+- Map legend shows the hut shape on planets that have one.
+- On reaching 100% before maxing every bubble: expected on generated planets.
+  Their final bubbles are a bit bigger (32 vs 30) and overlap, so the planet
+  can be fully alive before the last few reach MAX. Ember needs all 21.

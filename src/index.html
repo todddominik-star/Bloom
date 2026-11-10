@@ -103,6 +103,7 @@
   .maplegend span { display: inline-flex; align-items: center; gap: 4px; }
   .lg { display: inline-block; width: 11px; height: 11px; background: #ff4d5e; border: 1.5px solid #fff; }
   .lg.c { border-radius: 50%; } .lg.b { width: 7px; height: 14px; } .lg.t { width: 0; height: 0; border: 0; background: none; border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 12px solid #ff4d5e; }
+  .lg.h { border: 0; width: 13px; height: 13px; background: #ff4d5e; clip-path: polygon(50% 0, 100% 42%, 100% 100%, 0 100%, 0 42%); }
   .lg.you { border-radius: 50%; background: #3d8bff; width: 12px; height: 12px; }
   .mapnote { font-size: 11px; opacity: .7; }
   #countdown { position: fixed; left: 0; top: 0; font-size: 64px; font-weight: 900; color: #fff; -webkit-text-stroke: 4px #14244a; paint-order: stroke fill; pointer-events: none; transition: opacity .2s; }
@@ -142,7 +143,7 @@
   <div class="maphead"><b>Ember</b><button class="btn" id="mapclose" aria-label="Close map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
   <canvas id="mapcv"></canvas>
   <div id="mapstats"></div>
-  <div class="maplegend"><span><i class="lg c"></i>bubble</span><span><i class="lg s"></i>machine</span><span><i class="lg b"></i>bridge</span><span><i class="lg t"></i>rocket</span><span><i class="lg you"></i>you</span></div>
+  <div class="maplegend"><span><i class="lg c"></i>bubble</span><span><i class="lg s"></i>machine</span><span><i class="lg b"></i>bridge</span><span><i class="lg t"></i>rocket</span><span id="lg-hut" class="gone"><i class="lg h"></i>hut</span><span><i class="lg you"></i>you</span></div>
   <div class="mapnote">Red: not finished yet · Green: MAX</div>
 </div></div>
 <div id="countdown" class="gone"></div>
