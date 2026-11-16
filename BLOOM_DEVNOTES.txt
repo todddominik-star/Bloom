@@ -297,3 +297,21 @@ v11 — tidy workbench, everything retires, launch framing, hut in the legend
 - On reaching 100% before maxing every bubble: expected on generated planets.
   Their final bubbles are a bit bigger (32 vs 30) and overlap, so the planet
   can be fully alive before the last few reach MAX. Ember needs all 21.
+
+PLANNING (not built yet) — missions, relics, purpose
+- Big picture discussed: a living galaxy map of restored planets (settlers
+  named), tool tiers unlocked by blueprint pieces (relics) — e.g. sonic
+  cutter replaces pickaxe, laser cutter replaces axe, twice the upgrade
+  steps, some upgrades need materials not native to every planet — choose
+  your next planet from 2-3 options, one mission per planet from a pool,
+  sectors of 5 planets ending in a landmark planet. Open questions: an
+  ending or forever journey? creatures? choosing the next planet?
+- [Todd] mission idea, "The broken scanner": restoring the hut sometimes
+  (~25%) makes a broken scanner fall out of the door. Inspecting it shows
+  how many parts it needs (8-10). Parts come from maxing bubble generators
+  (about half of them, chosen at random, carry one). Rebuilt scanner +
+  touching a large rock reveals its hollow/weak spot; only then can the
+  pick/cutter work that spot and free the relic.
+  Notes to settle: parts must be reachable even though a planet can hit
+  100% before every bubble is maxed; the scanned rock could be one of the
+  big rim rocks; the scanner's part count could show on the map/HUD.
