@@ -118,6 +118,27 @@
   @keyframes warp { from { background-position: 0 0; } to { background-position: 0 180px; } }
   #travel-to { position: relative; font-size: 24px; font-weight: 900; letter-spacing: .5px; text-shadow: 0 2px 12px #3d8bff; }
   @media (prefers-reduced-motion: reduce) { .help { animation: none; } #countdown.tick { animation: none; } #travel .stars { animation: none; } }
+
+  #hold { position: fixed; left: max(8px, env(safe-area-inset-left)); top: calc(env(safe-area-inset-top) + 84px); width: 96px; display: grid; gap: 6px; padding: 8px; border-radius: 16px; background: var(--panel); box-shadow: 0 6px 18px rgba(10,20,50,.3); transition: opacity .2s; max-height: calc(100vh - 160px); overflow-y: auto; }
+  .galbtn { margin-left: auto; margin-right: 8px; border: 0; border-radius: 99px; padding: 7px 12px; background: linear-gradient(#ffe27a, #f5b942); color: #3a2a08; font: 900 13px/1 inherit; font-family: inherit; }
+  #mapmission { max-width: 340px; font-size: 13px; font-weight: 800; text-align: center; color: #ffe27a; }
+  #galaxy { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(5,10,30,.6); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); z-index: 12; transition: opacity .3s; padding: 10px; }
+  .galcard { width: min(380px, 100%); max-height: calc(100vh - 20px); overflow-y: auto; display: grid; gap: 8px; padding: 12px 14px 16px; border-radius: 22px; background: radial-gradient(circle at 30% 0%, #23366e, #0d1430 70%); color: #fff; box-shadow: 0 10px 40px rgba(0,0,0,.5); text-align: left; }
+  #galmap svg { border-radius: 14px; background: rgba(0,0,0,.25); }
+  #galhint { font-size: 12px; font-weight: 700; opacity: .85; }
+  .offer { padding: 10px 12px; border-radius: 14px; background: rgba(255,255,255,.08); border: 2px solid transparent; display: grid; gap: 6px; }
+  .offer.on { border-color: #ffd23f; background: rgba(255,210,63,.1); }
+  .ohead { display: flex; align-items: center; gap: 6px; } .ohead b { font-size: 14px; } .ohead i { margin-left: auto; font-style: normal; font-weight: 900; color: #9fd8ff; }
+  .oicon { font-size: 18px; }
+  .offer p { margin: 0; font-size: 13px; line-height: 1.35; opacity: .9; }
+  .ohave { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 800; color: #ffe27a; }
+  .obtn { justify-self: start; border: 0; border-radius: 99px; padding: 8px 16px; background: rgba(255,255,255,.18); color: #fff; font: 900 13px/1 inherit; font-family: inherit; }
+  .obtn.on { background: #ffd23f; color: #3a2a08; } .obtn.go { background: linear-gradient(#5ff2ff, #2fb8e0); color: #0b1d3a; }
+  .rhead { font-weight: 900; font-size: 14px; margin-top: 4px; letter-spacing: .5px; }
+  .relic { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 6px 10px; border-radius: 12px; background: rgba(255,255,255,.06); }
+  .relic b { font-size: 13px; } .relic.done { background: rgba(255,214,90,.16); }
+  .pips { display: flex; gap: 4px; align-items: center; } .pips i { width: 14px; height: 14px; border-radius: 4px; background: rgba(255,255,255,.15); transform: rotate(45deg) scale(.8); }
+  .rfx { grid-column: 1 / -1; font-size: 11px; opacity: .75; }
   .legal { margin-top: 18px; font-size: 11px; line-height: 1.5; opacity: .6; text-align: center; }
 </style>
 </head>
@@ -139,12 +160,22 @@
   </div>
 </div>
 <div id="shed" class="gone"></div>
+<div id="hold" class="gone"></div>
 <div id="map" class="gone"><div class="mapcard">
-  <div class="maphead"><b>Ember</b><button class="btn" id="mapclose" aria-label="Close map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div class="maphead"><b>Ember</b><button class="galbtn" id="galbtn">✦ Galaxy</button><button class="btn" id="mapclose" aria-label="Close map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
   <canvas id="mapcv"></canvas>
   <div id="mapstats"></div>
   <div class="maplegend"><span><i class="lg c"></i>bubble</span><span><i class="lg s"></i>machine</span><span><i class="lg b"></i>bridge</span><span><i class="lg t"></i>rocket</span><span id="lg-hut" class="gone"><i class="lg h"></i>hut</span><span><i class="lg you"></i>you</span></div>
   <div class="mapnote">Red: not finished yet · Green: MAX</div>
+  <div id="mapmission"></div>
+</div></div>
+<div id="galaxy" class="gone"><div class="galcard">
+  <div class="maphead"><b>Galaxy</b><button class="btn" id="galclose" aria-label="Close galaxy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div id="galmap"></div>
+  <div id="galhint"></div>
+  <div id="offers"></div>
+  <div class="rhead">Relics</div>
+  <div id="relics"></div>
 </div></div>
 <div id="countdown" class="gone"></div>
 <div id="travel" class="gone"><div class="stars"></div><div id="travel-to"></div></div>
@@ -167,6 +198,7 @@
   <p id="win-text"></p>
   <p id="win-stats" style="font-weight:800"></p>
   <button class="big" id="next">Fly to the next planet</button>
+  <button class="link" id="wingal">Galaxy map</button>
   <button class="link" id="again">Keep exploring</button>
   <button class="link" id="restart">Start over</button>
 </div></div>

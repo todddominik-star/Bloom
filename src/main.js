@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { MATERIALS, icon, STAGE_CAP, STAGE_NAME } from './materials.js';
 import { PLANET1, NODE_MATERIAL } from './planet.js';
 import { generatePlanet, LOOKS } from './planetgen.js';
+import { RELICS, relicDone, makeOffers, offerTitle, offerText, offerIcon, galaxySVG, relicsHTML, rewardTool } from './journey.js';
 
 // ---- which planet are we on? Ember first, then generated planets. The journey (planet number,
 // its seed, the crew who came along, your tools and skills) lives in GAME_KEY; each planet has
@@ -12,6 +13,13 @@ try { game = JSON.parse(localStorage.getItem(GAME_KEY) || 'null'); } catch (e) {
 if (!game) game = { planet: 0, seed: 0, crew: [], tools: null, skills: null };
 const P = game.planet === 0 ? PLANET1 : generatePlanet(game.seed, game.planet);
 if (!P.look) P.look = LOOKS.ember;
+// the journey layer: relic pieces, the rocket's cargo hold, the planets behind you, this planet's mission
+if (!game.relics) game.relics = { pick: 0, axe: 0, suit: 0, bag: 0 };
+if (!game.cargo) game.cargo = {};
+if (!game.log) game.log = [];
+const saveGame = () => { try { localStorage.setItem(GAME_KEY, JSON.stringify(game)); } catch (e) {} };
+const MISSION = game.planet > 0 && game.mission && P.hut ? game.mission : null;
+const relicOn = (k) => relicDone(game, k);
 const SAVE_KEY = 'bloom-save-v3-p' + game.planet; // Ember's rework: older saves start fresh
 const LOOK = P.look;
 const glsl3 = (hex) => { const c = parseInt(hex.slice(1), 16); return `vec3(${((c >> 16) & 255) / 255}, ${((c >> 8) & 255) / 255}, ${(c & 255) / 255})`; };
@@ -490,6 +498,7 @@ function makeBridge(repaired, tx, tz, kind = 'wood') {
 // ------------------------------------------------------------------ world objects
 const colliders = []; // {x, z, r}
 const nodes = [];
+const rockObjs = [];   // the great rocks: the scanner looks inside these
 {
   let seed = 100;
   const r = rng(P.seed * 13);
@@ -524,7 +533,8 @@ const nodes = [];
   for (let i = 0; i < P.rocks.length; i++) {
     const [x, z] = P.rocks[i];
     const o = makeRock(500 + i); o.position.set(x, 0, z); scene.add(o);
-    colliders.push({ x, z, r: 2.6 });
+    const col = { x, z, r: 2.6 }; colliders.push(col);
+    rockObjs.push({ i, x, z, model: o, col });
   }
 }
 
@@ -624,6 +634,7 @@ for (const g of gens) {
       sfx.build(); bloomPulse(g);
       toast(g.level === 0 ? 'Bubble generator built!' : g.level === g.radii.length - 1 ? 'Bubble at its biggest (MAX)' : `Bubble grows (LVL ${g.level + 1})`, true);
       refreshGen(g);
+      if (g.level === g.radii.length - 1) missionGenMax(gens.indexOf(g));
     },
   });
   g.site = site;
@@ -828,6 +839,7 @@ rocket.site = addSite({
   cost: () => { if (rocket.done) return null; const left = {}; for (const [m, n] of Object.entries(P.rocket.cost)) left[m] = n - (rocket.paid[m] || 0); return left; },
   pay: (m) => { rocket.paid[m] = (rocket.paid[m] || 0) + 1; },
   complete: () => { rocket.done = true; sfx.fanfare(); toast('Rocket repaired! Launch whenever you are ready.', true); },
+  extra: () => { const o = game.course != null && game.offers ? game.offers[game.course] : null; return `<span class="lock">${o ? `Course: ${o.name}` : 'No course yet: map → Galaxy'}</span>`; },
 });
 function refreshRocket() {
   const f = rocket.model.userData.fins;
@@ -995,7 +1007,7 @@ rescued = lost.length - newLost.length;
 const player = { x: P.start.x, z: P.start.z, face: Math.PI, model: makeAstronaut(), swing: 0, swingT: 0, walk: 0, air: AIR_TIMES[0], floating: false, target: null };
 player.model.position.set(player.x, 0, player.z);
 scene.add(player.model);
-const bagCap = () => BAG_SIZES[tools.bag];
+const bagCap = () => BAG_SIZES[tools.bag] + (relicOn('bag') ? 50 : 0);
 const bagCount = () => Object.values(bag).reduce((a, b) => a + b, 0);
 // room left, counting pieces already flying toward you
 const bagRoom = () => bagCap() - bagCount() - incoming;
@@ -1003,7 +1015,7 @@ function toBag(id, from) {
   incoming++;
   fly(id, from, playerChest, () => { incoming--; bag[id] = (bag[id] || 0) + 1; sfx.pop(); hudDirty = true; });
 }
-const maxAir = () => AIR_TIMES[tools.suit];
+const maxAir = () => AIR_TIMES[tools.suit] * (relicOn('suit') ? 2 : 1);
 const skillLevel = (k) => Math.min(20, 1 + Math.floor(Math.sqrt(skills[k] / 6)));
 
 // ------------------------------------------------------------------ flying pickups
@@ -1183,7 +1195,7 @@ function gather(dt) {
   const m = MATERIALS[target.mat];
   const toolKey = m.skill === 'chop' ? 'axe' : 'pick';
   player.lastTool = toolKey;
-  if (tools[toolKey] + 1 < m.tier) {
+  if (tools[toolKey] + 1 < m.tier && !relicOn(toolKey)) {
     if (performance.now() - lastNeedPickToast > 5000) { toast(`${m.name} needs a better ${toolKey === 'pick' ? 'pickaxe' : 'axe'} (workbench)`); lastNeedPickToast = performance.now(); }
     player.gathering = false;
     return;
@@ -1196,7 +1208,7 @@ function gather(dt) {
   if (!player.moving) player.face = Math.atan2(target.x - player.x, target.z - player.z);
   if (player.swingT > 0) return;
   const lvl = skillLevel(m.skill);
-  player.swingT = BASE_SWING / (TOOL_SPEED[tools[toolKey]] * (1 + 0.05 * (lvl - 1)));
+  player.swingT = BASE_SWING / (TOOL_SPEED[tools[toolKey]] * (1 + 0.05 * (lvl - 1)) * (relicOn(toolKey) ? 1.5 : 1));
   player.swing = 1;
   target.shake = 1;
   sfx.hit(m.skill);
@@ -1539,13 +1551,14 @@ const sosEl = document.getElementById('sos');
 function updateHUD() {
   capEl.textContent = `${bagCount()}/${bagCap()}`;
   capEl.parentElement.classList.toggle('full', bagCount() >= bagCap());
-  hudEl.innerHTML = [...P.materials, ...P.refined].filter((m) => (bag[m] || 0) > 0).map((m) => `<div class="mrow">${icon(m, 20)}<b>${bag[m]}</b></div>`).join('');
+  hudEl.innerHTML = bagOrder().filter((m) => (bag[m] || 0) > 0).map((m) => `<div class="mrow">${icon(m, 20)}<b>${bag[m]}</b></div>`).join('');
   restoreEl.style.setProperty('--p', restore);
   restoreEl.querySelector('b').textContent = badge ? '100% ★' : `${pctAlive()}%`;
   restoreEl.classList.toggle('gold', badge);
   sosEl.textContent = `${newLost.filter((o) => o.state === 'rescued').length}/${newLost.length}`;
   for (const s of sites) renderSite(s);
   if (shed.open) renderShed();
+  if (holdOpen) renderHold();
   hudDirty = false;
 }
 let toastTimer = 0;
@@ -1579,6 +1592,7 @@ function updateOverlays() {
   if (open && !shed.open) renderShed();
   shed.open = open;
   shedEl.classList.toggle('gone', !open);
+  updateHold();
 }
 
 
@@ -1621,11 +1635,12 @@ if (hut) {
   hut.site = addSite({
     x: P.hut.x + 2.7, z: P.hut.z + 2.0, reach: 1.3,
     title: () => (hut.level < 0 ? 'Broken hut' : `Hut · LVL ${hut.level + 1}`),
-    extra: () => `<span class="store">${icon('heatShield', 16)} Shield parts ${Math.min(2, hut.parts)}/2</span><span class="lock">${hut.shield ? 'Heat shield ready at the door' : 'At MAX, with both parts, it makes the heat shield for the rocket'}</span>`,
+    extra: () => `${scannerLine()}<span class="store">${icon('heatShield', 16)} Shield parts ${Math.min(2, hut.parts)}/2</span><span class="lock">${hut.shield ? 'Heat shield ready at the door' : 'At MAX, with both parts, it makes the heat shield for the rocket'}</span>`,
     cost: () => { const base = P.hut.levels[hut.level + 1]; if (!base) return null; const left = {}; for (const [m, n] of Object.entries(base)) left[m] = n - (hut.paid[m] || 0); return left; },
     pay: (m) => { hut.paid[m] = (hut.paid[m] || 0) + 1; },
     complete: () => {
       hut.paid = {}; hut.level++; sfx.build();
+      if (hut.level === 0) missionHutRepaired();
       if (hutMax() && hut.parts < 2) toast(`Hut at MAX. It's waiting for shield parts (${hut.parts}/2): find the lost astronauts.`, true);
       else if (!hutMax()) toast(hut.level === 0 ? 'Hut repaired! Upgrade it to MAX to make the heat shield.' : 'Hut upgraded', true);
       hutCheckShield();
@@ -1640,6 +1655,292 @@ function updateHut(t) {
     hut.taken = true; toBag('heatShield', hut.shieldModel.position.clone()); refreshHut();
     toast('Heat shield in your bag: bring it to the rocket', true);
   }
+}
+
+// ------------------------------------------------------------------ this planet's mission (planets after Ember)
+// relic / help: the repaired hut drops a broken scanner; its parts hide in half the bubble
+// generators and turn up when one reaches MAX. The working scanner looks inside the great rocks;
+// one has a glowing weak spot: break it open for a relic piece (or a trapped critter).
+// delivery: the settlers' depot wants something this planet doesn't have; bring it in the rocket hold.
+const ms = { partsGot: [], seen: false, ready: false, scanned: [], found: false, hits: 0, cracked: false, done: false, paid: 0 };
+const MR = (() => { let s = ((MISSION ? MISSION.seed : 1) % 2147483647) || 1; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })();
+const scanMission = !!MISSION && (MISSION.type === 'relic' || MISSION.type === 'help');
+const partsNeed = scanMission ? Math.max(1, Math.ceil(gens.length / 2)) : 0;
+const partGens = scanMission ? gens.map((_, i) => [i, MR()]).sort((a, b) => a[1] - b[1]).slice(0, partsNeed).map((a) => a[0]) : [];
+let targetRock = null;
+if (scanMission && rockObjs.length) {
+  const far = rockObjs.filter((r) => Math.hypot(r.x - P.start.x, r.z - P.start.z) > 30);
+  const pool = far.length ? far : rockObjs;
+  targetRock = pool[Math.floor(MR() * pool.length)];
+}
+const SCAN_ICON = '<svg width="16" height="16" viewBox="0 0 20 20"><path d="M4 15a8 8 0 0 1 8-11" stroke="#3d8bff" stroke-width="2" fill="none"/><path d="M7 15a5 5 0 0 1 5-8" stroke="#3d8bff" stroke-width="2" fill="none"/><circle cx="13" cy="14" r="2.4" fill="#ff9f43"/></svg>';
+function scannerLine() {
+  if (!scanMission || !ms.seen) return '';
+  if (ms.done) return '';
+  if (ms.ready) return `<span class="store">${SCAN_ICON} Scanner working</span>`;
+  return `<span class="store">${SCAN_ICON} Scanner parts ${ms.partsGot.length}/${partsNeed}</span>`;
+}
+const critterName = () => (MISSION && MISSION.critter) || 'Pip';
+function missionIntro() {
+  if (!MISSION) return '';
+  if (MISSION.type === 'relic') return 'Mission: a voyager\'s log says a relic hums inside one of the great rocks here. Repair the hut: there\'s an old scanner inside.';
+  if (MISSION.type === 'help') return `Mission: ${critterName()} is trapped under a great rock! The family is waiting by your landing spot. Repair the hut: there's an old scanner inside.`;
+  return `Mission: the settlers need ${MISSION.amount} ${MATERIALS[MISSION.mat].name.toLowerCase()}. Unload it from the rocket hold and bring it to their depot.`;
+}
+function missionStatus() {
+  if (!MISSION) return game.planet === 0 ? 'No mission here: just bring Ember back to life.' : '';
+  if (ms.done) return MISSION.type === 'help' ? `Mission complete: ${critterName()} is home safe.` : MISSION.type === 'relic' ? 'Mission complete: the relic is yours.' : 'Mission complete: the settlers have their delivery.';
+  if (MISSION.type === 'delivery') return `Mission: deliver ${MISSION.amount} ${MATERIALS[MISSION.mat].name.toLowerCase()} to the depot (${ms.paid}/${MISSION.amount}).`;
+  if (!ms.seen) return MISSION.type === 'help' ? `Mission: free ${critterName()}. Repair the hut first: an old scanner is inside.` : 'Mission: find the relic. Repair the hut first: an old scanner is inside.';
+  if (!ms.ready) return `Mission: max out bubble generators to find the scanner parts (${ms.partsGot.length}/${partsNeed}).`;
+  if (!ms.found) return `Mission: walk up to the great rocks with the scanner (${ms.scanned.length}/${rockObjs.length} scanned).`;
+  return 'Mission: stand by the glowing crack and break the rock open.';
+}
+function checkScannerReady() {
+  if (!scanMission || ms.ready || !ms.seen || ms.partsGot.length < partsNeed) return;
+  ms.ready = true; sfx.fanfare(); hudDirty = true;
+  toast('The scanner works again! Walk up to the great rocks to look inside them.', true);
+}
+function missionHutRepaired() {
+  if (!scanMission || ms.seen) return;
+  ms.seen = true; hudDirty = true;
+  scanDrop = 1;
+  setTimeout(() => toast(`A broken scanner tumbled out of the hut door! ${partsNeed} parts are missing: max out bubble generators to find them.`, true), 1200);
+  setTimeout(checkScannerReady, 4000);
+}
+function missionGenMax(i) {
+  if (!scanMission || !partGens.includes(i) || ms.partsGot.includes(i)) return;
+  ms.partsGot.push(i); hudDirty = true;
+  const g = gens[i];
+  setTimeout(() => {
+    sfx.level();
+    toast(`A scanner part was inside that bubble generator! (${ms.partsGot.length}/${partsNeed})`, true);
+    fly(P.roles.B, new THREE.Vector3(g.x, 2, g.z), playerChest);
+    checkScannerReady();
+  }, 900);
+}
+// the broken scanner: a little dish that falls out of the hut door and sits there
+let scanModel = null, scanDrop = 0;
+if (scanMission && hut) {
+  scanModel = new THREE.Group();
+  const base = mesh(new THREE.BoxGeometry(0.5, 0.25, 0.4), '#8d8f98'); base.position.y = 0.12;
+  const dish = mesh(new THREE.SphereGeometry(0.32, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2.4), '#d9dde6', { side: THREE.DoubleSide }); dish.position.y = 0.42; dish.rotation.x = -0.7;
+  const tip = mesh(new THREE.SphereGeometry(0.07, 6, 4), '#ff9f43', { emissive: '#ff9f43', emissiveIntensity: 0.8 }); tip.position.set(0, 0.62, 0.15);
+  scanModel.add(base, dish, tip); scanModel.userData = { tip };
+  scanModel.position.set(P.hut.x - 1.3, 0, P.hut.z + 2.2); scanModel.visible = false; scene.add(scanModel);
+}
+// the weak spot: a glowing crack on the hidden rock's face
+let crackMesh = null;
+if (targetRock) {
+  crackMesh = new THREE.Mesh(new THREE.TorusKnotGeometry(0.45, 0.09, 40, 6, 2, 3), new THREE.MeshBasicMaterial({ color: MISSION.type === 'help' ? '#ffb3d1' : '#ffe27a' }));
+  crackMesh.position.set(targetRock.x, 1.1, targetRock.z + 2.85); crackMesh.visible = false; scene.add(crackMesh);
+  // a soft beam of light from the rock, so you can find it again from across the planet
+  crackMesh.userData.beam = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.9, 30, 10, 1, true), new THREE.MeshBasicMaterial({ color: crackMesh.material.color, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }));
+  crackMesh.userData.beam.position.set(targetRock.x, 15, targetRock.z); crackMesh.userData.beam.visible = false; scene.add(crackMesh.userData.beam);
+}
+const DIRS = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+const dirWord = (a, b) => DIRS[(Math.round(Math.atan2(b.x - a.x, -(b.z - a.z)) / (Math.PI / 4)) + 8) % 8];
+let crackT = 0;
+function updateMission(dt, t) {
+  if (!MISSION) return;
+  if (scanModel) {
+    scanModel.visible = ms.seen && !ms.ready;
+    if (scanDrop > 0) { scanDrop = Math.max(0, scanDrop - dt * 1.5); scanModel.position.y = scanDrop * 1.6; scanModel.rotation.z = scanDrop * 2; }
+    scanModel.userData.tip.visible = Math.sin(t * 6) > 0;
+  }
+  if (ms.ready && !ms.found && targetRock) {
+    for (const r of rockObjs) {
+      if (ms.scanned.includes(r.i) || r.col.r <= 0 || Math.hypot(r.x - player.x, r.z - player.z) > 5.6) continue;
+      ms.scanned.push(r.i); hudDirty = true;
+      if (r === targetRock) {
+        ms.found = true; sfx.fanfare();
+        toast(MISSION.type === 'help' ? `The scanner hears tiny squeaks inside this rock: it's ${critterName()}! Stand by the glowing crack to break it open.` : 'The scanner found a hollow spot humming with light! Stand by the glowing crack to break it open.', true);
+      } else { sfx.pop(); toast(`Solid rock. The scanner hums to the ${dirWord(r, targetRock)}.`); }
+      break;
+    }
+  }
+  if (crackMesh) {
+    crackMesh.visible = ms.found && !ms.cracked;
+    crackMesh.userData.beam.visible = crackMesh.visible;
+    if (crackMesh.visible) { crackMesh.rotation.y = t * 1.5; crackMesh.scale.setScalar(1.3 + Math.sin(t * 4) * 0.15); crackMesh.userData.beam.material.opacity = 0.16 + Math.sin(t * 2) * 0.06; }
+  }
+  if (ms.found && !ms.cracked && targetRock && !player.floating) {
+    const d = Math.hypot(targetRock.x - player.x, targetRock.z - player.z) - targetRock.col.r;
+    if (d < 1.0 && !player.moving) {
+      player.gathering = true; player.lastTool = 'pick';
+      player.face = Math.atan2(targetRock.x - player.x, targetRock.z - player.z);
+      crackT -= dt;
+      if (crackT <= 0) {
+        crackT = 0.5; player.swing = 1; sfx.hit('mine'); ms.hits++;
+        targetRock.model.position.x = targetRock.x + (Math.random() - 0.5) * 0.25;
+        if (ms.hits >= 8) crackOpen();
+      }
+    } else targetRock.model.position.x = targetRock.x;
+  }
+  if (depot) depot.model.userData.flag.rotation.y = Math.sin(t * 2) * 0.3;
+}
+function crackOpen() {
+  ms.cracked = true;
+  targetRock.model.visible = false; targetRock.col.r = 0;
+  sfx.build(); bloomPulse({ x: targetRock.x, z: targetRock.z });
+  for (let i = 0; i < 6; i++) fly(P.roles.B, new THREE.Vector3(targetRock.x + Math.random() * 2 - 1, 1 + Math.random(), targetRock.z + Math.random() * 2 - 1), new THREE.Vector3(targetRock.x + Math.random() * 6 - 3, 0, targetRock.z + Math.random() * 6 - 3));
+  if (MISSION.type === 'help') {
+    const c = addCritter(targetRock.x, targetRock.z + 1.5, critterColor(0), village);
+    c.freed = true; c.speed = 3.2;
+    toast(`${critterName()} is free! They squeak a happy thank-you and hop home to their family.`, true);
+    setTimeout(completeMission, 2600);
+  } else {
+    toast('The rock splits open: something ancient is glowing inside!', true);
+    setTimeout(completeMission, 1400);
+  }
+  save();
+}
+function completeMission() {
+  if (ms.done) return;
+  ms.done = true; hudDirty = true;
+  sfx.fanfare();
+  const k = MISSION.tool && !relicOn(MISSION.tool) ? MISSION.tool : Object.keys(RELICS).find((r) => !relicOn(r));
+  if (k) grantRelic(k);
+  else toast(MISSION.type === 'delivery' ? 'Delivered! The settlers cheer for you.' : 'Mission complete!', true);
+  save();
+}
+function grantRelic(k) {
+  const R = RELICS[k];
+  const piece = R.pieces[game.relics[k] || 0];
+  game.relics[k] = Math.min(R.pieces.length, (game.relics[k] || 0) + 1);
+  saveGame(); hudDirty = true;
+  toast(`Relic piece: ${piece}! ${R.name} ${game.relics[k]}/${R.pieces.length}`, true);
+  if (relicOn(k)) setTimeout(() => { sfx.fanfare(); toast(`The ${R.name} is whole again! ${R.effect}.`, true); player.air = Math.max(player.air, maxAir() * 0.5); hudDirty = true; }, 3800);
+}
+
+// ---- the critters: small round folk who live here (on help and delivery planets)
+const CRITTER_COLORS = ['#ffb3d1', '#ffd27a', '#9fe3c4', '#b9b0ff', '#ffa98a'];
+const critterColor = (i) => CRITTER_COLORS[(Math.floor((MISSION ? MISSION.seed : 0) / 7) + i) % CRITTER_COLORS.length];
+// the village: an open spot near the landing site, clear of the river and of every sign and machine
+const village = (() => {
+  const keep = [P.rocket, P.shed, P.workbench, P.hut, ...gens, ...P.refiners, ...P.extractors].filter(Boolean);
+  let best = null, bd = -1;
+  for (const r of [10, 13, 16, 19]) for (let k = 0; k < 16; k++) {
+    const a = k / 16 * Math.PI * 2, x = P.start.x + Math.cos(a) * r, z = P.start.z + Math.sin(a) * r;
+    if (Math.hypot(x, z) > P.radius - 12 || !canStand(x, z) || !canStand(x - 3.2, z - 0.6)) continue;
+    const d = Math.min(...keep.map((o) => Math.hypot(o.x - x, o.z - z)));
+    if (d > bd) { bd = d; best = { x, z }; }
+    if (d > 9) return best;
+  }
+  return best || { x: P.start.x + 4, z: P.start.z + 4 };
+})();
+const critters = [];
+function makeCritter(color) {
+  const grp = new THREE.Group(), body = new THREE.Group();
+  const ball = mesh(new THREE.SphereGeometry(0.36, 14, 10), color); ball.position.y = 0.4;
+  const eyeM = new THREE.MeshBasicMaterial({ color: '#1d1a24' }), glint = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+  for (const sx of [-0.12, 0.12]) {
+    const e = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), eyeM); e.position.set(sx, 0.5, 0.31);
+    const g = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 4), glint); g.position.set(sx + 0.02, 0.53, 0.36);
+    body.add(e, g);
+  }
+  const blush = new THREE.MeshBasicMaterial({ color: '#ff7aa0', transparent: true, opacity: 0.55 });
+  for (const sx of [-0.22, 0.22]) { const b = new THREE.Mesh(new THREE.CircleGeometry(0.05, 8), blush); b.position.set(sx, 0.42, 0.33); b.rotation.y = sx * 1.6; body.add(b); }
+  const sprout = mesh(new THREE.ConeGeometry(0.05, 0.2, 5), '#5cbf45'); sprout.position.y = 0.82; body.add(sprout);
+  for (const sx of [-0.14, 0.14]) { const f = mesh(new THREE.SphereGeometry(0.09, 6, 4), '#6b4a3a'); f.position.set(sx, 0.06, 0.08); f.scale.y = 0.6; grp.add(f); }
+  body.add(ball); grp.add(body); grp.userData = { body };
+  return grp;
+}
+function addCritter(x, z, color, home) {
+  const m = makeCritter(color); m.position.set(x, 0, z); scene.add(m);
+  const c = { m, x, z, home, tx: x, tz: z, wait: Math.random() * 2, hop: Math.random() * 6, speed: 1.5 };
+  critters.push(c);
+  return c;
+}
+if (MISSION && MISSION.type !== 'relic') for (let i = 0; i < 3; i++) addCritter(village.x + Math.cos(i * 2.1) * 1.6, village.z + Math.sin(i * 2.1) * 1.6, critterColor(i + 1), village);
+function updateCritters(dt, t) {
+  for (const c of critters) {
+    const near = Math.hypot(player.x - c.x, player.z - c.z) < 2.6;
+    const dx = c.tx - c.x, dz = c.tz - c.z, d = Math.hypot(dx, dz);
+    let moving = false;
+    if (near && !c.freed) { c.m.rotation.y = Math.atan2(player.x - c.x, player.z - c.z); }
+    else if (d > 0.15 && c.wait <= 0) {
+      const sp = Math.min(d, c.speed * dt); c.x += (dx / d) * sp; c.z += (dz / d) * sp; moving = true;
+      c.m.rotation.y = Math.atan2(dx, dz);
+    } else {
+      if (c.freed && Math.hypot(c.x - c.home.x, c.z - c.home.z) < 2.5) { c.freed = false; c.speed = 1.5; }
+      c.wait -= dt;
+      if (c.wait <= 0 && d <= 0.15) {
+        const range = c.freed ? 0 : 3.5, a = Math.random() * Math.PI * 2, r = Math.random() * range;
+        c.tx = c.home.x + Math.cos(a) * r; c.tz = c.home.z + Math.sin(a) * r; c.wait = 0.8 + Math.random() * 2.2;
+      }
+    }
+    if (c.freed) { c.tx = c.home.x; c.tz = c.home.z; c.wait = 0; }
+    // a hop when they move; a happy bounce when you're close (or the mission is done)
+    const happy = near || (ms.done && MISSION && MISSION.type !== 'relic');
+    c.hop += dt * (moving ? 9 : happy ? 7 : 2);
+    const h = moving || happy ? Math.abs(Math.sin(c.hop)) * (moving ? 0.3 : 0.2) : Math.sin(c.hop) * 0.02 + 0.02;
+    const b = c.m.userData.body; b.position.y = h; b.scale.set(1 + (h < 0.03 ? 0.06 : 0), 1 - (h < 0.03 ? 0.06 : 0), 1);
+    c.m.position.set(c.x, 0, c.z);
+    c.m.visible = !(boarding || rocket.launching) || Math.hypot(c.x - P.rocket.x, c.z - P.rocket.z) > 3;
+  }
+}
+
+// ---- the settlers' depot (delivery planets)
+let depot = null;
+if (MISSION && MISSION.type === 'delivery') {
+  const x = village.x - 3.2, z = village.z - 0.6;
+  const grp = new THREE.Group();
+  for (const [ox, oy, oz] of [[-0.6, 0, 0], [0.6, 0, 0.1], [0, 0.9, 0.05]]) { const b = mesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), '#c08a52'); b.position.set(ox, oy + 0.45, oz); grp.add(b); const st = mesh(new THREE.BoxGeometry(0.94, 0.12, 0.94), '#8a5a35'); st.position.set(ox, oy + 0.45, oz); grp.add(st); }
+  const pole = mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.8, 6), '#d9dde6'); pole.position.set(1.4, 1.4, -0.3);
+  const flag = new THREE.Group(); const cloth = mesh(new THREE.BoxGeometry(0.8, 0.5, 0.04), critterColor(1)); cloth.position.x = 0.4; flag.add(cloth); flag.position.set(1.4, 2.5, -0.3);
+  grp.add(pole, flag); grp.userData = { flag };
+  grp.position.set(x, 0, z); scene.add(grp);
+  for (const n of nodes) if (Math.hypot(n.x - x, n.z - z) < 3.2 || Math.hypot(n.x - village.x, n.z - village.z) < 3) { n.hp = 0; n.regrow = 1e12; }
+  colliders.push({ x, z, r: 1.3 });
+  depot = { x, z, model: grp };
+  const dmat = MISSION.mat;
+  depot.site = addSite({
+    x: x + 2.2, z: z + 1.2, reach: 1.8,
+    title: () => (ms.done ? 'Settlers\' depot' : `Depot: ${MISSION.amount} ${MATERIALS[dmat].name.toLowerCase()}`),
+    doneText: 'DELIVERED ✓',
+    cost: () => (ms.done ? null : { [dmat]: MISSION.amount - ms.paid }),
+    pay: () => { ms.paid++; },
+    extra: () => (ms.done ? '' : `<span class="lock">In your rocket hold: ${game.cargo[dmat] || 0}</span>`),
+    complete: () => { sfx.build(); toast('Delivered! The settlers bounce with joy.', true); setTimeout(completeMission, 1800); },
+  });
+}
+
+// ---- the rocket hold: a shelf that flies with you from planet to planet
+const HOLD_CAP = 150;
+const holdEl = document.getElementById('hold');
+let holdOpen = false;
+const holdCount = () => Object.values(game.cargo).reduce((a, b) => a + b, 0);
+const bagOrder = () => [...new Set([...P.materials, ...P.refined, ...Object.keys(bag)])].filter((m) => MATERIALS[m]);
+function renderHold() {
+  let html = `<div class="shead">Rocket hold<span>${holdCount()}/${HOLD_CAP}</span></div>`;
+  for (const m of [...new Set([...bagOrder(), ...Object.keys(game.cargo)])]) {
+    if (!MATERIALS[m] || MATERIALS[m].special) continue;
+    const b = bag[m] || 0, h = game.cargo[m] || 0;
+    if (!b && !h) continue;
+    html += `<button class="srow" data-m="${m}" aria-label="${MATERIALS[m].name}">${icon(m, 24)}<span><b>${b}</b><i>hold ${h}</i></span></button>`;
+  }
+  html += '<div class="shint">bag · hold<br>tap to load: it flies on with you. When nothing can load, a tap unloads</div>';
+  holdEl.innerHTML = html;
+}
+holdEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-m]');
+  if (!btn) return;
+  const m = btn.dataset.m, name = MATERIALS[m].name.toLowerCase();
+  const put = Math.min(bag[m] || 0, HOLD_CAP - holdCount());
+  if (put > 0) { bag[m] -= put; game.cargo[m] = (game.cargo[m] || 0) + put; sfx.pay(); toast(`Loaded ${put} ${name} into the rocket hold`); }
+  else {
+    const n = Math.min(game.cargo[m] || 0, Math.max(0, bagRoom()));
+    if (n > 0) { game.cargo[m] -= n; if (!game.cargo[m]) delete game.cargo[m]; bag[m] = (bag[m] || 0) + n; sfx.pop(); toast(`Took ${n} ${name} from the hold`); }
+    else toast(bagRoom() <= 0 ? 'Your bag is full' : 'The rocket hold is full');
+  }
+  saveGame(); save(); hudDirty = true; renderHold();
+});
+function updateHold() {
+  const open = playing && !boarding && !rocket.launching && Math.hypot(P.rocket.x - player.x, P.rocket.z - player.z) < 4.8;
+  if (open && !holdOpen) renderHold();
+  holdOpen = open;
+  holdEl.classList.toggle('gone', !open);
 }
 
 // ------------------------------------------------------------------ retired materials
@@ -1704,7 +2005,7 @@ function unpackSeen(str) { seenCount = 0; for (let c = 0; c < str.length; c++) {
 const mapEl = document.getElementById('map');
 const mapCv = document.getElementById('mapcv');
 let paused = false;
-function openMap() { if (!playing) return; paused = true; drawMap(); mapEl.classList.remove('gone'); sfx.pop(); }
+function openMap() { if (!playing) return; paused = true; drawMap(); document.getElementById('mapmission').textContent = missionStatus(); mapEl.classList.remove('gone'); sfx.pop(); }
 function closeMap() { paused = false; mapEl.classList.add('gone'); }
 document.getElementById('mapbtn').addEventListener('click', () => (paused ? closeMap() : openMap()));
 mapEl.addEventListener('click', (e) => { if (e.target === mapEl || e.target.closest('#mapclose')) closeMap(); });
@@ -1803,6 +2104,7 @@ function save() {
     lost: lost.map((a) => ({ state: a.state === 'following' ? 'waiting' : a.state, job: a.job, name: a.name, x: a.x, z: a.z, carryPart: !!a.carryPart })),
     shed: { level: shed.level, paid: shed.paid, store: shed.store }, toolPaid, seen: packSeen(),
     hut: hut ? { level: hut.level, paid: hut.paid, shield: hut.shield, taken: hut.taken, parts: hut.parts } : null,
+    mission: ms,
   };
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(d)); } catch (e) {}
 }
@@ -1821,6 +2123,7 @@ function load() {
   if (d.shed) { shed.level = d.shed.level; shed.paid = d.shed.paid || {}; Object.assign(shed.store, d.shed.store || {}); refreshShed(); }
   if (d.toolPaid) Object.assign(toolPaid, d.toolPaid);
   if (d.seen) unpackSeen(d.seen);
+  if (d.mission && MISSION) Object.assign(ms, d.mission);
   if (hut && d.hut) { Object.assign(hut, { level: d.hut.level, paid: d.hut.paid || {}, shield: !!d.hut.shield, taken: !!d.hut.taken, parts: d.hut.parts || 0 }); }
   d.lost.forEach((s, i) => {
     const a = lost[i]; if (!a) return;
@@ -1927,6 +2230,8 @@ function launch() {
       : `You can come back and bring the rest of ${P.name} to life for the gold badge. `) +
       (stayNames ? `${stayNames} stayed behind to make a home in the hut. ` : '') +
       (crewNames ? `${crewNames} ${aboard.length > 1 ? 'are' : 'is'} flying on with you.` : '');
+    if (MISSION) document.getElementById('win-text').textContent += ' ' + missionStatus();
+    document.getElementById('next').textContent = nextLabel();
     document.getElementById('win').classList.remove('gone');
   }, 3200);
 }
@@ -1978,22 +2283,71 @@ if (arriving) {
   showTravel(arriving);
   document.getElementById('travel-to').textContent = `Arriving at ${P.name}`;
   startEl.classList.add('gone');
-  setTimeout(() => { begin(); toast(`Welcome to ${P.name}. Find the two lost astronauts and fix the hut by the rocket.`, true); document.documentElement.classList.remove('traveling'); document.getElementById('travel').classList.add('fade'); setTimeout(() => document.getElementById('travel').classList.add('gone'), 900); }, 1300);
+  setTimeout(() => { begin(); toast(`Welcome to ${P.name}. Find the two lost astronauts and fix the hut by the rocket.`, true); if (MISSION && !ms.done) setTimeout(() => toast(missionIntro(), true), 6500); document.documentElement.classList.remove('traveling'); document.getElementById('travel').classList.add('fade'); setTimeout(() => document.getElementById('travel').classList.add('gone'), 900); }, 1300);
 }
 document.getElementById('fresh').addEventListener('click', startOver);
-document.getElementById('next').addEventListener('click', () => {
-  // on to a brand new planet: your crew aboard, your tools and skills come too
-  const flying = aboard.length ? aboard : lost.filter((a) => a.state === 'rescued').slice(0, 2);
-  // a new seed whose planet name you haven't visited yet
-  const visited = [...(game.visited || []), P.name];
-  let seed = Math.floor(Math.random() * 1e9), name = generatePlanet(seed, game.planet + 1).name;
-  for (let k = 0; k < 20 && visited.includes(name); k++) { seed = Math.floor(Math.random() * 1e9); name = generatePlanet(seed, game.planet + 1).name; }
-  const next = { planet: game.planet + 1, seed, crew: flying.map((a) => ({ name: a.name, color: a.color })), tools: { ...tools }, skills: { ...skills }, visited };
-  try { localStorage.setItem(GAME_KEY, JSON.stringify(next)); localStorage.removeItem(SAVE_KEY); } catch (e) {}
-  try { sessionStorage.setItem('bloom-travel', name); } catch (e) {}
-  showTravel(name);
-  setTimeout(() => location.reload(), 1400);
+// ------------------------------------------------------------------ the galaxy: where you've been and where to next
+const galEl = document.getElementById('galaxy');
+let galFly = false;
+function offers() {
+  const key = game.planet + ':' + P.name;
+  if (!game.offers || game.offersFor !== key) { game.offers = makeOffers(game, P, generatePlanet); game.offersFor = key; game.course = null; saveGame(); }
+  return game.offers;
+}
+function renderGalaxy() {
+  const list = offers();
+  document.getElementById('galmap').innerHTML = galaxySVG(game, P, list, game.course);
+  document.getElementById('galhint').textContent = galFly ? 'Where to next? Pick a planet to fly there.' : (MISSION || game.planet === 0 ? missionStatus() + ' ' : '') + 'Set a course before you launch, so you can load the rocket hold for a delivery.';
+  document.getElementById('offers').innerHTML = list.map((o, i) => {
+    const sel = game.course === i;
+    const have = o.type === 'delivery' ? `<span class="ohave">${icon(o.mat, 16)} in your rocket hold: ${game.cargo[o.mat] || 0}/${o.amount}</span>` : '';
+    const btn = galFly ? `<button class="obtn go" data-fly="${i}">Fly to ${o.name}</button>` : `<button class="obtn${sel ? ' on' : ''}" data-course="${i}">${sel ? '✓ Course set' : 'Set course'}</button>`;
+    return `<div class="offer${sel ? ' on' : ''}"><div class="ohead"><span class="oicon">${offerIcon(o.type)}</span><b>${offerTitle(o)}</b><i>${o.name}</i></div><p>${offerText(o, P, game)}</p>${have}${btn}</div>`;
+  }).join('');
+  document.getElementById('relics').innerHTML = relicsHTML(game);
+}
+function openGalaxy(fly = false) {
+  galFly = fly;
+  if (playing) { paused = true; closeMap(); paused = true; }
+  renderGalaxy();
+  galEl.classList.remove('gone'); sfx.pop();
+}
+function closeGalaxy() { galEl.classList.add('gone'); if (playing) paused = false; }
+galEl.addEventListener('click', (e) => {
+  if (e.target === galEl || e.target.closest('#galclose')) { closeGalaxy(); return; }
+  const c = e.target.closest('[data-course]');
+  if (c) { const i = +c.dataset.course; game.course = game.course === i ? null : i; saveGame(); sfx.pay(); renderGalaxy(); hudDirty = true; return; }
+  const f = e.target.closest('[data-fly]');
+  if (f) flyTo(+f.dataset.fly);
 });
+document.getElementById('galbtn').addEventListener('click', () => openGalaxy(false));
+function nextLabel() {
+  const o = game.course != null && game.offers ? game.offers[game.course] : null;
+  return o ? `Fly to ${o.name}` : 'Choose the next planet';
+}
+document.getElementById('next').addEventListener('click', () => {
+  if (game.course != null && game.offers && game.offers[game.course]) flyTo(game.course);
+  else openGalaxy(true);
+});
+document.getElementById('wingal').addEventListener('click', () => openGalaxy(true));
+function flyTo(i) {
+  // on to the next planet: your crew aboard, your tools, skills, relics and the rocket hold come too
+  const o = offers()[i];
+  if (!o) return;
+  const flying = aboard.length ? aboard : lost.filter((a) => a.state === 'rescued').slice(0, 2);
+  const log = [...game.log, { name: P.name, look: P.lookName || 'ember', badge, critters: !!(MISSION && MISSION.type !== 'relic' && ms.done), mission: MISSION ? MISSION.type : null, done: !!ms.done }];
+  const next = {
+    ...game, planet: game.planet + 1, seed: o.seed,
+    crew: flying.map((a) => ({ name: a.name, color: a.color })), tools: { ...tools }, skills: { ...skills },
+    visited: [...(game.visited || []), P.name], log,
+    mission: { ...o, tool: rewardTool(o, game) }, offers: null, offersFor: null, course: null,
+  };
+  try { localStorage.setItem(GAME_KEY, JSON.stringify(next)); localStorage.removeItem(SAVE_KEY); } catch (e) {}
+  try { sessionStorage.setItem('bloom-travel', o.name); } catch (e) {}
+  galEl.classList.add('gone');
+  showTravel(o.name);
+  setTimeout(() => location.reload(), 1400);
+}
 function startOver() {
   try { for (const k of Object.keys(localStorage)) if (k.startsWith('bloom-save') || k === GAME_KEY) localStorage.removeItem(k); } catch (e) {}
   location.reload();
@@ -2024,6 +2378,8 @@ if (!load() && game.planet > 0) {
 }
 refreshHut();
 refreshBench();
+// a mission already under way when you come back
+if (ms.cracked && targetRock) { targetRock.model.visible = false; targetRock.col.r = 0; if (MISSION.type === 'help') addCritter(village.x, village.z, critterColor(0), village); }
 computeRetired();
 if (unstick()) setTimeout(() => toast('Your suit found you a safe spot to stand.'), 1200);
 reveal(P.start.x, P.start.z, REVEAL_HOME);
@@ -2064,10 +2420,12 @@ function update(dt) {
     updateLost(dt, t);
     updateDiscovery();
     updateHut(t);
+    updateMission(dt, t);
     retireT += dt; if (retireT > 2) { retireT = 0; computeRetired(); }
     saveT += dt; if (saveT > 5) { saveT = 0; save(); }
   }
   updateNodes(dt);
+  updateCritters(dt, t);
   updateFlyers(dt);
   updateBubbles(dt);
   refreshRocket();
@@ -2091,6 +2449,6 @@ function update(dt) {
 requestAnimationFrame(frame);
 
 // hooks for automated playtesting
-window.__bloom = { step: (n) => { for (let i = 0; i < n; i++) update(1 / 30); }, player, bag, tools, gens, nodes, sites, extractors, bridges, refiners, rocket, lost, launch, startBoarding, canStand, save, hut, retired, game, P, computeRetired, get aboard() { return aboard; }, get stayers() { return stayers; }, get boarding() { return boarding; }, shed, openMap, closeMap, get explored() { return explored(); }, reveal, get restore() { return restore; }, begin, give: (m, n) => { bag[m] = (bag[m] || 0) + n; hudDirty = true; } };
+window.__bloom = { ms, MISSION, rockObjs, critters, openGalaxy, flyTo, offers, grantRelic, completeMission, get targetRock() { return targetRock; }, depot, step: (n) => { for (let i = 0; i < n; i++) update(1 / 30); }, player, bag, tools, gens, nodes, sites, extractors, bridges, refiners, rocket, lost, launch, startBoarding, canStand, save, hut, retired, game, P, computeRetired, get aboard() { return aboard; }, get stayers() { return stayers; }, get boarding() { return boarding; }, shed, openMap, closeMap, get explored() { return explored(); }, reveal, get restore() { return restore; }, begin, give: (m, n) => { bag[m] = (bag[m] || 0) + n; hudDirty = true; } };
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});

@@ -318,3 +318,74 @@ PLANNING (not built yet) — missions, relics, purpose
 - [Todd] settled: scanner parts = 50% of the planet's bubble generators,
   placed at random. If the planet reaches 100% alive before the scanner is
   complete, you keep maxing bubbles for the parts (not for the percent).
+
+
+v12 — THE JOURNEY LAYER (built; Todd restarts the whole game fresh to play it)
+- Galaxy screen (map → "✦ Galaxy", or the win screen): a star chart of the
+  last planets you visited (gold star = 100%, pink dot = critters you
+  helped), you, and three ways on. Each offer is a different kind:
+    * A voyager's log (relic): "something hums inside a great rock on X".
+    * A call for help: a named critter is trapped under a great rock.
+    * A delivery: X needs 30-80 of a raw material it doesn't have but this
+      planet does (load it into the rocket hold before you go).
+  "Set course" any time before launch; the rocket sign shows the course.
+  After liftoff the win button says "Fly to X" (or "Choose the next
+  planet", which opens the galaxy in pick-and-fly mode). Ember has offers
+  but no mission of its own.
+- Scanner missions (relic and help), Todd's design:
+    * Repairing the hut drops a broken scanner out of the door (always, on
+      these planets; Todd's 25% idea can come back once there are more
+      mission kinds). The hut sign shows "Scanner parts n/N".
+    * N = half the bubble generators (rounded up), chosen at random per
+      planet; a part pops out when that generator reaches MAX. Parts keep
+      coming even after the planet is 100% alive.
+    * Working scanner: walk within ~5.5 of a great rock. Wrong rock: "Solid
+      rock. The scanner hums to the north-west" (points at the right one).
+      Right rock: a glowing knot on its face and a beam of light into the
+      sky. Stand by it: 8 pick swings and it splits open.
+    * Relic: a relic piece. Help: the critter pops out, hops home to the
+      family waiting near your landing spot, and gives you a relic piece.
+- Delivery missions: a settlers' depot (crates and a flag) near the landing
+  spot with three critters. Unload the material from the rocket hold, pay
+  it at the depot sign like any sign; reward a relic piece.
+- Rocket hold: a shelf panel beside the rocket (like the shed). Tap to load
+  from the bag; when nothing can load, a tap unloads. 150 slots. It lives
+  in the journey save, so it flies with you to every planet. The HUD now
+  shows any material in the bag, even one from another planet.
+- Relics: Star pickaxe (3 pieces: Star head, Comet haft, Anchor grip), Star
+  axe (3: Moon blade, Rootwood haft, Ember grip), Star suit (5: boots,
+  gloves, helmet, body suit, power pack), Star pack (4: frame, straps,
+  pouch, clasp). Collection shown in the galaxy screen. A finished set:
+  pick/axe mine or chop any tier, 1.5x faster; suit doubles air; pack +50.
+  The reward named in an offer is re-checked when you fly (a finished set
+  is skipped).
+- Critters: small round folk with eyes, rosy cheeks and a sprout; they
+  wander near their village, turn to look at you, and bounce when you're
+  close or when the mission is done.
+- Saves: journey (GAME_KEY) gains relics, cargo, log, offers, course,
+  mission. The planet save gains "mission" (parts, scanned rocks, found,
+  cracked, done, paid).
+- Tests: t14.py (Ember → galaxy → delivery course → load hold → fly →
+  unload → deliver → relic), t15.py relic|help (hut → scanner → parts →
+  wrong rock hint → right rock → crack → relic set complete → reload).
+
+NEXT (planned, not built)
+- Energy orb: Todd's pick upgrade = 3 relic pieces + an energy orb from
+  certain worlds; if the last piece comes without the orb, the assembled
+  tool waits in the rocket hold. (Now: a set finishes with its pieces.)
+- More missions from Todd's list: clear a path home for stranded
+  inhabitants; rebuild a critter home after an asteroid; build a second
+  rocket so the inhabitants can escape; scanner finds a blueprint piece;
+  scanner finds a spot for an energy extractor the inhabitants need;
+  open/destroy a giant boulder.
+- Critters on 60-70% of planets even without a mission.
+- New raw materials: more crystal colours (not yellow), obsidian/onyx,
+  powder piles: sand (brown), ash (grey), uranium (green), carbon (black).
+- Glassworks by the lava river with a repairable conveyor: sand + heat →
+  glass orbs. Diamond press: carbon → diamonds for pick and axe tips at the
+  workbench.
+- Sectors of ~5 planets with a landmark "boss" planet; blueprints toward
+  tier-2 tools (sonic cutter, laser cutter) with twice the upgrade levels.
+- Delivery rumours that name where a material is ("Corgi and Saffron have
+  red crystal; Saffron has no rock to refine it").
+- A better glow-cap icon.
