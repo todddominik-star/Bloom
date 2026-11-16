@@ -315,3 +315,6 @@ PLANNING (not built yet) — missions, relics, purpose
   Notes to settle: parts must be reachable even though a planet can hit
   100% before every bubble is maxed; the scanned rock could be one of the
   big rim rocks; the scanner's part count could show on the map/HUD.
+- [Todd] settled: scanner parts = 50% of the planet's bubble generators,
+  placed at random. If the planet reaches 100% alive before the scanner is
+  complete, you keep maxing bubbles for the parts (not for the percent).
