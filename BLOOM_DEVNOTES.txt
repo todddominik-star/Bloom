@@ -389,3 +389,18 @@ NEXT (planned, not built)
 - Delivery rumours that name where a material is ("Corgi and Saffron have
   red crystal; Saffron has no rock to refine it").
 - A better glow-cap icon.
+
+v13 — rocket hold spot, cargo hatch, boarding walk-in
+- The rocket hold no longer opens anywhere near the rocket: there's a white
+  circle on the grey pad rim, front side (toward the camera), next to a
+  black cargo hatch on the rocket body. Stand on the circle to open the
+  hold. The fins moved to 30°/150°/270° so the front is clear.
+- Launch: you walk to the circle, stop, and close the hatch (the black door
+  vanishes into the grey hull), then walk round behind the rocket to climb
+  in. "Keep exploring" opens the hatch again.
+- Every crew member flying on is now placed just off the edge of the
+  screen (left, then right) at the start of the countdown, wherever they
+  were, and walks in. Before, only crew more than 15 away were moved,
+  so one could be somewhere slow to reach (Todd saw only one join on
+  leaving Ember). Everyone is aboard in about 5 seconds of the 10.
+- Test: t16.py.

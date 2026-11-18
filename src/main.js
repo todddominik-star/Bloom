@@ -450,14 +450,21 @@ function makeRocket() {
   const fins = [];
   for (let i = 0; i < 3; i++) {
     const f = mesh(new THREE.BoxGeometry(0.16, 1.4, 1.1), '#ef4b5f');
-    const a = (i / 3) * Math.PI * 2;
+    const a = (i / 3) * Math.PI * 2 + Math.PI / 6;   // 30°, 150°, 270°: the front (toward the camera) stays clear for the hatch
     f.position.set(Math.cos(a) * 1.15, 1.1, Math.sin(a) * 1.15); f.rotation.y = -a;
     grp.add(f); fins.push(f);
   }
   const flame = new THREE.Mesh(new THREE.ConeGeometry(0.7, 2.4, 14), new THREE.MeshBasicMaterial({ color: '#ffb347', transparent: true, opacity: 0.9 }));
   flame.rotation.x = Math.PI; flame.position.y = -0.6; flame.visible = false;
   grp.add(flame);
-  grp.userData = { fins, flame, body, nose };
+  // the cargo hatch (black door, closed at launch) and the white circle where you stand to use the hold
+  const hatch = mesh(new THREE.BoxGeometry(0.62, 0.95, 0.08), '#15161c'); hatch.position.set(0, 1.0, 1.13);
+  const holdSpot = new THREE.Mesh(new THREE.CircleGeometry(0.34, 24), new THREE.MeshBasicMaterial({ color: '#ffffff' }));
+  holdSpot.rotation.x = -Math.PI / 2; holdSpot.position.set(0.75, 0.31, 2.35);
+  const holdRing = new THREE.Mesh(new THREE.RingGeometry(0.4, 0.46, 24), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.6 }));
+  holdRing.rotation.x = -Math.PI / 2; holdRing.position.set(0.75, 0.32, 2.35);
+  grp.add(hatch, holdSpot, holdRing);
+  grp.userData = { fins, flame, body, nose, hatch, holdSpot, holdRing };
   return grp;
 }
 // bridge looks: wood and stone, glowing crystal, or solid gold
@@ -1908,6 +1915,7 @@ if (MISSION && MISSION.type === 'delivery') {
 
 // ---- the rocket hold: a shelf that flies with you from planet to planet
 const HOLD_CAP = 150;
+const HOLD_SPOT = { x: P.rocket.x + 0.75, z: P.rocket.z + 2.35 };   // the white circle on the pad rim
 const holdEl = document.getElementById('hold');
 let holdOpen = false;
 const holdCount = () => Object.values(game.cargo).reduce((a, b) => a + b, 0);
@@ -1937,7 +1945,7 @@ holdEl.addEventListener('click', (e) => {
   saveGame(); save(); hudDirty = true; renderHold();
 });
 function updateHold() {
-  const open = playing && !boarding && !rocket.launching && Math.hypot(P.rocket.x - player.x, P.rocket.z - player.z) < 4.8;
+  const open = playing && !boarding && !rocket.launching && Math.hypot(HOLD_SPOT.x - player.x, HOLD_SPOT.z - player.z) < 1.15;
   if (open && !holdOpen) renderHold();
   holdOpen = open;
   holdEl.classList.toggle('gone', !open);
@@ -2155,14 +2163,22 @@ function startBoarding() {
   let i = 0;
   for (const a of lost) {
     if (!aboard.includes(a)) continue;
-    // far-away crew come in from just off screen
-    const dx = a.x - R.x, dz = a.z - R.z, d = Math.hypot(dx, dz);
-    if (d > 15) { a.x = R.x + (dx / d) * 15; a.z = R.z + (dz / d) * 15; }
+    // every crew member flying on starts just off the edge of the screen (left, then right) and walks in
+    const side = i % 2 ? 1 : -1;
+    let ox = R.x + side * 8, oz = R.z + 3;
+    for (let r = 8; r <= 18; r += 0.5) {
+      ox = R.x + side * r; oz = R.z + 3 + r * 0.15;
+      const [sx, sy] = project(ox, 1, oz);
+      if (sx < -30 || sx > innerWidth + 30 || sy < -30 || sy > innerHeight + 30) break;
+    }
+    a.x = ox; a.z = oz; a.m.visible = true;
     a.el.classList.add('gone');
-    walkers.push({ who: a, delay: 0.3 + i * 0.55, path: pathFrom(a.x, a.z), step: 0, inside: false });
+    walkers.push({ who: a, delay: 0.3 + i * 1.1, path: pathFrom(a.x, a.z), step: 0, inside: false });
     i++;
   }
-  walkers.push({ who: 'player', delay: Math.max(2.5, 0.3 + i * 0.55 + 0.6), path: pathFrom(player.x, player.z), step: 0, inside: false });
+  // you walk to the white circle, close the cargo hatch, then go round the back
+  const spot = { x: HOLD_SPOT.x, z: HOLD_SPOT.z + 0.55, act: 'hatch' };
+  walkers.push({ who: 'player', delay: 0.4, path: [spot, { x: R.x + 2.9, z: R.z + 1.9 }, ...pathFrom(R.x + 3, R.z)], step: 0, inside: false, wait: 0 });
   boarding = { t: 0, shown: 11, walkers };
   sfx.level();
 }
@@ -2188,11 +2204,17 @@ function updateBoarding(dt, t) {
     if (w.inside || b.t < w.delay) continue;
     const isP = w.who === 'player';
     const o = isP ? player : w.who;
+    if (w.wait > 0) {
+      w.wait -= dt;
+      if (isP) { player.moving = false; player.face = Math.PI; }
+      if (w.wait <= 0) { rocket.model.userData.hatch.visible = false; sfx.build(); }
+      continue;
+    }
     const tgt = w.path[w.step];
     const dx = tgt.x - o.x, dz = tgt.z - o.z, d = Math.hypot(dx, dz);
-    const sp = Math.min(d, (isP ? 5.5 : 5.2) * dt);
+    const sp = Math.min(d, (isP ? 4.2 : 3.8) * dt);
     if (d > 0.05) { o.x += (dx / d) * sp; o.z += (dz / d) * sp; }
-    if (d < 0.15) { w.step++; if (w.step >= w.path.length) { w.inside = true; (isP ? player.model : w.who.m).visible = false; sfx.pay(); continue; } }
+    if (d < 0.15) { if (tgt.act === 'hatch' && !tgt.done) { tgt.done = true; w.wait = 0.7; if (isP) player.swing = 1; } w.step++; if (w.step >= w.path.length) { w.inside = true; (isP ? player.model : w.who.m).visible = false; sfx.pay(); continue; } }
     if (isP) { player.face = Math.atan2(dx, dz); player.moving = true; player.walk += dt * 10; player.gathering = false; }
     else {
       const a = w.who, u = a.m.userData;
@@ -2356,7 +2378,7 @@ document.getElementById('restart').addEventListener('click', startOver);
 document.getElementById('again').addEventListener('click', () => {
   document.getElementById('win').classList.add('gone'); playing = true; rocket.model.position.y = 0; rocket.model.userData.flame.visible = false; rocket.launching = 0;
   // everyone climbs back out
-  player.x = P.rocket.x; player.z = P.rocket.z + 3.4; player.model.visible = true;
+  player.x = P.rocket.x - 1.4; player.z = P.rocket.z + 3.4; player.model.visible = true; rocket.model.userData.hatch.visible = true;
   lost.forEach((a, i) => { if (a.state === 'rescued' || a.state === 'following') { a.m.visible = true; a.x = P.rocket.x - 4 + (i % 4) * 2.2; a.z = P.rocket.z + 5 + Math.floor(i / 4) * 1.8; } });
   stayers = []; aboard = [];
   updateCamera(0, true);
