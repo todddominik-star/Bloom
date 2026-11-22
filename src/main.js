@@ -892,7 +892,7 @@ for (const rf of refiners) {
       hidden: () => !rf.repaired || !rfMax(rf) || rf.bp,
       cost: () => (rfMax(rf) && !rf.bp ? { [rf.alt.bp]: rf.bpIn ? 0 : 1 } : null),
       pay: () => { rf.bpIn = true; },
-      extra: () => (rf.bp ? '' : `<span class="recipe">teaches: ${Object.entries(rf.alt.inputs).map(([m, n]) => `${n}${icon(m, 14)}`).join(' + ')} → ${icon(rf.alt.output, 16)}</span>${(bag[rf.alt.bp] || 0) ? '' : '<span class="lock">The blueprint is printed at the rocket</span>'}`),
+      extra: () => (rf.bp ? '' : `<span class="recipe">teaches: ${Object.entries(rf.alt.inputs).map(([m, n]) => `${n}${icon(m, 14)}`).join(' + ')} → ${icon(rf.alt.output, 16)}</span>${(bag[rf.alt.bp] || 0) ? '' : `<span class="lock">${restore < P.restoreGoal ? 'The rocket prints it once the planet is 50% alive' : 'Pick it up at the rocket'}</span>`}`),
       complete: () => { rf.bp = true; rf.mode = 1; sfx.fanfare(); toast(`Blueprint installed! Step on a disc to switch the ${rf.name.toLowerCase()} between ${MATERIALS[rf.output].name.toLowerCase()} and ${MATERIALS[rf.alt.output].name.toLowerCase()}.`, true); refreshRefiner(rf); renderSite(rf.site); renderSite(rf.outSite); },
       doneText: '',
     });
@@ -993,7 +993,7 @@ function refreshRocket() {
 }
 // the rocket's computer prints the blueprints the first time you come near it
 function updateRocketBlueprints() {
-  if (rocket.bpGiven || !playing || Math.hypot(P.rocket.x - player.x, P.rocket.z - player.z) > 5) return;
+  if (rocket.bpGiven || !playing || restore < P.restoreGoal || Math.hypot(P.rocket.x - player.x, P.rocket.z - player.z) > 5) return;
   rocket.bpGiven = true;
   const list = refiners.filter((r) => r.alt && !r.bp);
   for (const r of list) bag[r.alt.bp] = (bag[r.alt.bp] || 0) + 1;
@@ -1787,8 +1787,12 @@ if (hut) {
   hut.sign = makeSign(); hut.sign.position.set(P.hut.x + 2.7, 0, P.hut.z + 1.4); scene.add(hut.sign);
   hut.site = addSite({
     x: P.hut.x + 2.7, z: P.hut.z + 2.0, reach: 1.3,
-    title: () => (hut.level < 0 ? 'Broken hut' : `Hut · LVL ${hut.level + 1}`),
-    extra: () => `${scannerLine()}<span class="store">${icon('heatShield', 16)} Shield parts ${Math.min(2, hut.parts)}/2</span><span class="lock">${hut.shield ? 'Heat shield ready at the door' : 'At MAX, with both parts, it makes the heat shield for the rocket'}</span>`,
+    get doneText() { return hutSettled() ? '' : 'MAX'; },
+    title: () => (hutSettled() ? 'A home on ' + P.name : hut.level < 0 ? 'Broken hut' : `Hut · LVL ${hut.level + 1}`),
+    // once the shield is picked up (and the scanner, on scanner missions) the hut is just a home
+    extra: () => hutSettled()
+      ? `<span class="lock">Astronauts can make a new life here now, on a planet coming back to life.</span>`
+      : `${scannerLine()}${hut.taken ? '' : `<span class="store">${icon('heatShield', 16)} Shield parts ${Math.min(2, hut.parts)}/2</span><span class="lock">${hut.shield ? 'Heat shield ready at the door' : 'At MAX, with both parts, it makes the heat shield for the rocket'}</span>`}`,
     cost: () => { const base = P.hut.levels[hut.level + 1]; if (!base) return null; const left = {}; for (const [m, n] of Object.entries(base)) left[m] = n - (hut.paid[m] || 0); return left; },
     pay: (m) => { hut.paid[m] = (hut.paid[m] || 0) + 1; },
     complete: () => {
@@ -1801,11 +1805,12 @@ if (hut) {
     },
   });
 }
+function hutSettled() { return hut && hut.taken && (!scanMission || ms.ready); }
 function updateHut(t) {
   if (!hut) return;
   if (hut.shieldModel.visible) { hut.shieldModel.position.y = 1.1 + Math.sin(t * 2.5) * 0.12; hut.shieldModel.rotation.z = t; }
   if (hut.shield && !hut.taken && Math.hypot(P.hut.x - player.x, P.hut.z + 2.1 - player.z) < 1.6 && bagRoom() > 0) {
-    hut.taken = true; toBag('heatShield', hut.shieldModel.position.clone()); refreshHut();
+    hut.taken = true; toBag('heatShield', hut.shieldModel.position.clone()); refreshHut(); renderSite(hut.site);
     toast('Heat shield in your bag: bring it to the rocket', true);
   }
 }
@@ -1830,7 +1835,7 @@ const SCAN_ICON = '<svg width="16" height="16" viewBox="0 0 20 20"><path d="M4 1
 function scannerLine() {
   if (!scanMission || !ms.seen) return '';
   if (ms.done) return '';
-  if (ms.ready) return `<span class="store">${SCAN_ICON} Scanner working</span>`;
+  if (ms.ready) return '';
   return `<span class="store">${SCAN_ICON} Scanner parts at the hut ${ms.delivered}/${partsNeed}</span>`;
 }
 const critterName = () => (MISSION && MISSION.critter) || 'Pip';
@@ -1853,6 +1858,7 @@ function checkScannerReady() {
   if (!scanMission || ms.ready || !ms.seen || ms.delivered < partsNeed) return;
   ms.ready = true; sfx.fanfare(); hudDirty = true;
   bag.scanner = 1;
+  if (hut) renderSite(hut.site);
   toast('The scanner is repaired and packed in your backpack (it takes 10 spaces). Walk up to the great rocks to look inside them.', true);
 }
 function missionHutRepaired() {

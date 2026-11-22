@@ -463,3 +463,12 @@ IDEAS NOT BUILT YET
 - Landmark extras: an irrigation channel to dig, more landmark-only tasks.
 - Inhabitant missions: path home, rebuild after an asteroid, second rocket.
 - Critters on 60-70% of planets even without a mission.
+
+v15 — hut becomes a home, blueprints at 50%
+- The rocket prints its blueprints only once the planet is 50% alive (when the
+  rocket unlocks); the refinery blueprint slot says so until then.
+- Hut sign: shield parts / "makes the heat shield" lines vanish once the shield
+  is picked up; the scanner line tracks parts until the scanner is picked up.
+  With both done (or just the shield on non-scanner planets) the sign reads
+  "A home on <planet>: astronauts can make a new life here now…", no MAX tag.
+- Test: t20.py.
