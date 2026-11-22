@@ -404,3 +404,62 @@ v13 — rocket hold spot, cargo hatch, boarding walk-in
   so one could be somewhere slow to reach (Todd saw only one join on
   leaving Ember). Everyone is aboard in about 5 seconds of the 10.
 - Test: t16.py.
+
+v14 — restock the rocket, refinery blueprints, sectors and landmark worlds, new materials
+- ROCKET RESTOCK (every planet, Ember too): the rocket is never broken now. It
+  needs fuel cells, air tanks and food packs (4 each, +1 every two planets,
+  max 8), plus the heat shield on planets with a hut. 50% alive still gates it.
+- BLUEPRINTS: the first time you come near the rocket its computer prints three
+  blueprints into your bag (1 space each). A MAX refinery loses its upgrade
+  sign; a "rocket blueprint" slot takes its place. Stand there with the
+  blueprint to install it:
+    Kiln      → air tank  = 1 polished crystal + 2 of the planet's A material
+    Smelter   → fuel cell = 1 gold bar + 2 of the planet's C material
+    Assembler → food pack = 1 power core + 1 polished crystal
+  Two discs then appear in front of the machine: left = the original item,
+  right = the rocket supply (each labelled with name and picture). Step on one
+  to switch; the formula at the load end changes. The pickup tray keeps both
+  items (X/cap each) and the pickup pad collects both, one kind then the other.
+  Materials a blueprint recipe needs aren't retired while the rocket needs it.
+- SCANNER: parts now fly into the bag (1 space each) and are delivered at the
+  broken scanner by the hut door (a sign). All in → the scanner is packed in
+  the bag (10 spaces) and only works while carried. After the rock opens, it
+  goes back to the hut. Parts = half the generators, at most 10. The found
+  rock shows a gold star on the map until opened. The marker is a glowing
+  jagged crack seam (gold for relics, pink for critters), drawn on top so the
+  rock can't hide it, plus the light beam.
+- ROCKET HOLD: only takes what a planet ahead has asked for (a delivery), and
+  only as much as asked (course set → just that planet's request). It shows
+  hold n/amount; a full row unloads. The next planets' requests are worked out
+  shortly after landing, so a material they want is never retired (and comes
+  back if it was). Once the hold has it all and nothing else needs it, it
+  retires and the shed recycles it.
+- 75% ALIVE: "A message from X: they need 40 ... decide soon" (or "the next
+  planets are calling"), once per planet.
+- OFFERS: the three rewards are always different sets (while 3+ are unfinished).
+- SECTORS: five worlds each (Ember Reach, Tidewell, The Lantern Drift,
+  Hollowmere, Starfall Verge, The Quiet Shoal, then numbered). The galaxy shows
+  "Sector n: name · world k of 5" and what's next.
+- LANDMARK WORLDS (5th world of each sector, planet index 4, 9, 14…): radius
+  ~124-131 (vs ~92), up to 36 bubble generators (MAX_B raised to 40), and a dam
+  of logs and boulders across the river near home. Its sign takes A/B/C +
+  polished crystal; clearing it lets the river run, flowers spring up along
+  both banks downstream, and gives a relic piece. The rocket can't leave a
+  landmark world until the dam is cleared. Offers for a landmark say so.
+- NEW MATERIALS: sand, ash, carbon, uranium (glowing) as powder piles; obsidian
+  as glassy black shards; green and purple crystals. New icons for these, the
+  supplies, blueprints, scanner part and scanner.
+- GENERATOR VERSION: game.gen. Planets flown to from v14 on use gen 2 (new
+  materials, landmarks). A planet already being played (no gen) keeps gen 1
+  so its layout never changes under a save. Old saves: scanner parts found
+  before v14 count as delivered; a refinery's old tray count carries over.
+- Tests: t17.py (restock, blueprint, discs, tray, hold), t18.py (landmark dam,
+  scanner parts → hut → bag, star, galaxy sector line), t18c.py (old save),
+  t19.py (new material nodes), t14.py updated for the hold circle.
+
+IDEAS NOT BUILT YET
+- Glassworks (sand + heat → glass orbs) with a lava conveyor; diamond press
+  (carbon → diamonds for pick and axe tips); energy orb for relic tools.
+- Landmark extras: an irrigation channel to dig, more landmark-only tasks.
+- Inhabitant missions: path home, rebuild after an asteroid, second rocket.
+- Critters on 60-70% of planets even without a mission.

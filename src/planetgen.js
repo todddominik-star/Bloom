@@ -16,10 +16,14 @@ export const LOOKS = {
 };
 
 // try seeds until maxing every bubble really covers the whole planet (almost always the first)
-export function generatePlanet(seed, index) {
+// gen: the generator version. 1 = the first planets (kept as they were, so a planet already being
+// played never changes); 2 = v14: new materials, landmark worlds every 5th planet
+export const GEN_VERSION = 2;
+export const isLandmark = (index) => index % 5 === 4;
+export function generatePlanet(seed, index, gen = GEN_VERSION) {
   let P = null;
   for (let a = 0; a < 8; a++) {
-    P = makePlanet(seed + a * 7777, index);
+    P = makePlanet(seed + a * 7777, index, gen);
     const R = P.generators[0].radii[3] - 0.6;
     let full = true;
     for (let x = -P.radius; x <= P.radius && full; x += 2) for (let z = -P.radius; z <= P.radius; z += 2)
@@ -29,7 +33,7 @@ export function generatePlanet(seed, index) {
   return P;
 }
 
-function makePlanet(seed, index) {
+function makePlanet(seed, index, gen) {
   let s = (seed * 9301 + 49297) % 2147483647 || 1;
   const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
   const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
@@ -38,15 +42,26 @@ function makePlanet(seed, index) {
   const sc = (cost) => { const o = {}; for (const [m, n] of Object.entries(cost)) o[m] = MATERIALS[m] && MATERIALS[m].stage > 0 ? n : Math.round(n * scale); return o; };
 
   // ---- materials: A and B are easy (tool level 1), C needs at most level 2, D anything
-  const easy = shuffle(['wood', 'stone', 'redCrystal']);
-  const A = easy[0], B = easy[1];
-  const midPool = shuffle([easy[2], 'ice', 'mushroom', 'gold'].filter((m) => m !== A && m !== B));
-  const C = midPool[0];
-  const D = shuffle(['gold', 'blueCrystal', 'ice', 'mushroom'].filter((m) => m !== C))[0];
+  let A, B, C, D;
+  if (gen < 2) {
+    const easy = shuffle(['wood', 'stone', 'redCrystal']);
+    A = easy[0]; B = easy[1];
+    const midPool = shuffle([easy[2], 'ice', 'mushroom', 'gold'].filter((m) => m !== A && m !== B));
+    C = midPool[0];
+    D = shuffle(['gold', 'blueCrystal', 'ice', 'mushroom'].filter((m) => m !== C))[0];
+  } else {
+    // one of the old friends (wood, stone, red crystal) is always near home, so nothing feels alien
+    const easy = shuffle(['wood', 'stone', 'redCrystal']);
+    A = easy[0];
+    B = shuffle([easy[1], 'sand', 'ash', easy[1]])[0];
+    C = shuffle([easy[2], 'ice', 'mushroom', 'gold', 'greenCrystal', 'carbon', 'obsidian'].filter((m) => m !== A && m !== B))[0];
+    D = shuffle(['gold', 'blueCrystal', 'ice', 'mushroom', 'purpleCrystal', 'uranium', 'obsidian', 'greenCrystal'].filter((m) => m !== A && m !== B && m !== C))[0];
+  }
   const roles = { A, B, C, D };
   const R = (cost) => { const o = {}; for (const [k, n] of Object.entries(cost)) o[roles[k] || k] = (o[roles[k] || k] || 0) + n; return sc(o); };
 
-  const radius = 92 + Math.floor(rnd() * 8);
+  const landmark = gen >= 2 && isLandmark(index);
+  const radius = landmark ? 124 + Math.floor(rnd() * 8) : 92 + Math.floor(rnd() * 8);
   const lookName = pick(['teal', 'dusk', 'sand', 'teal', 'dusk']);
   const name = NAMES[Math.floor(rnd() * NAMES.length)];
 
@@ -116,7 +131,7 @@ function makePlanet(seed, index) {
     gensP.push({ x: +x.toFixed(1), z: +z.toFixed(1) });
   }
   // fill any gaps (river banks, the rim) until maxing everything covers the planet
-  for (let pass = 0; pass < 16 && gensP.length < 24; pass++) {
+  for (let pass = 0; pass < 24 && gensP.length < (landmark ? 36 : 24); pass++) {
     let worst = null, wd = 0;
     for (let x = -radius; x <= radius; x += 3) for (let z = -radius; z <= radius; z += 3) {
       if (Math.hypot(x, z) > radius) continue;
@@ -164,6 +179,15 @@ function makePlanet(seed, index) {
     { at: crossings[0][1], kind: sp2.kind, cost: sp2.mat ? sc({ [sp2.mat]: 36 }) : R({ C: 20, B: 10 }) },
   ] : [];
 
+  // ---- landmark worlds: a dam of logs and boulders chokes the river; clear it to let it flow
+  let dam = null;
+  if (landmark && inPlanet.length >= 3) {
+    const used = crossings.length ? crossings[0] : [];
+    const cand = inPlanet.filter((p) => used.every((u) => Math.hypot(u[0] - p[0], u[1] - p[1]) > 25)).sort((p, q) => Math.hypot(p[0] - start.x, p[1] - start.z) - Math.hypot(q[0] - start.x, q[1] - start.z));
+    const at = cand[0] || inPlanet[Math.floor(inPlanet.length / 2)];
+    dam = { at, cost: { ...R({ A: 24, B: 18, C: 8 }), polishedCrystal: 4 } };
+  }
+
   // ---- machines, astronauts, resources
   const refHome1 = find(1, 7, start, 40) || find(1, 7), refHome2 = find(1, 7, start, 50) || find(1, 7), refFar = find(-1, 7) || find(0, 7);
   const refiners = [
@@ -194,7 +218,7 @@ function makePlanet(seed, index) {
   for (let i = 0; i < 10; i++) { const p = find(0, 3); if (p) rocks.push([p.x, p.z]); }
 
   return {
-    name, seed, index, roles, look: LOOKS[lookName], lookName,
+    name, seed, index, roles, gen, landmark, look: LOOKS[lookName], lookName,
     radius,
     materials: [A, B, C, D],
     refined: ['polishedCrystal', 'goldBar', 'powerCore', 'heatShield'],
@@ -203,6 +227,7 @@ function makePlanet(seed, index) {
     airDrain: 1 + 0.15 * index,
     river: { width, points: riverPts },
     bridges,
+    dam,
     generators,
     extractors,
     refiners,

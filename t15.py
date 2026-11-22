@@ -5,7 +5,7 @@ with sync_playwright() as p:
     b=p.chromium.launch(args=["--use-gl=angle","--use-angle=swiftshader","--enable-unsafe-swiftshader"])
     pg=b.new_page(viewport={'width':360,'height':780}, device_scale_factor=2); pg.set_default_timeout(240000)
     errs=[]; pg.on('pageerror', lambda e: errs.append(str(e)))
-    pg.goto('http://localhost:8766/index.html'); time.sleep(1)
+    pg.goto('http://localhost:8766/dist/index.html'); time.sleep(1)
     m={'seed':777,'name':'Pella','look':'sand','type':kind,'tool':'pick','critter':'Moss'}
     pg.evaluate("localStorage.clear(); localStorage.setItem('bloom-game-v3', JSON.stringify({planet:1, seed:777, crew:[], tools:{pick:1,axe:1,bag:1,suit:1}, skills:{}, mission:%s, relics:{pick:2,axe:0,suit:0,bag:0}}))" % json.dumps(m))
     pg.reload(); time.sleep(2); pg.click('#go'); pg.evaluate('__bloom.step(5)')

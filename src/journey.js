@@ -21,7 +21,15 @@ export function makeOffers(game, P, generatePlanet) {
   const r = rng((game.seed || 7) * 31 + game.planet * 977 + 13);
   const used = new Set([...(game.visited || []), P.name]);
   const need = Object.keys(RELICS).filter((k) => !relicDone(game, k));
-  const pickTool = () => (need.length ? need[Math.floor(r() * need.length)] : null);
+  // the three rewards are always different (while at least three sets are unfinished)
+  const usedTools = new Set();
+  const pickTool = () => {
+    const fresh = need.filter((k) => !usedTools.has(k));
+    const pool = fresh.length ? fresh : need;
+    const k = pool.length ? pool[Math.floor(r() * pool.length)] : null;
+    if (k) usedTools.add(k);
+    return k;
+  };
   const types = ['relic', 'help', 'delivery'].sort(() => r() - 0.5);
   const offers = [];
   for (const type of types) {
@@ -36,7 +44,7 @@ export function makeOffers(game, P, generatePlanet) {
     }
     if (!best) continue;
     used.add(best.dest.name);
-    const o = { seed: best.seed, name: best.dest.name, look: best.dest.lookName || 'teal', type, tool: pickTool() };
+    const o = { seed: best.seed, name: best.dest.name, look: best.dest.lookName || 'teal', type, tool: pickTool(), landmark: !!best.dest.landmark };
     if (type === 'delivery') {
       if (best.missing.length) { o.mat = best.missing[Math.floor(r() * best.missing.length)]; o.amount = 30 + 10 * Math.min(5, game.planet); }
       else o.type = 'relic';
@@ -49,7 +57,7 @@ export function makeOffers(game, P, generatePlanet) {
 }
 
 export function offerTitle(o) {
-  return o.type === 'relic' ? 'A voyager\'s log' : o.type === 'help' ? 'A call for help' : 'A delivery';
+  return (o.landmark ? '★ Landmark world · ' : '') + ( o.type === 'relic' ? 'A voyager\'s log' : o.type === 'help' ? 'A call for help' : 'A delivery');
 }
 // the reward is worked out when you look (and when you fly): a set you finished meanwhile is skipped
 export function rewardTool(o, game) {
@@ -59,9 +67,10 @@ export function rewardTool(o, game) {
 export function offerText(o, P, game) {
   const k = rewardTool(o, game);
   const reward = k ? ` Reward: a relic piece, the ${RELICS[k].pieces[game.relics?.[k] || 0]} of the ${RELICS[k].name}.` : '';
-  if (o.type === 'relic') return `"Something hums inside a great rock on ${o.name}." Repair the hut's broken scanner to find it.${reward}`;
-  if (o.type === 'help') return `"${o.critter} is trapped under a boulder on ${o.name}! Please help." The hut's scanner can find them.${reward}`;
-  return `${o.name} needs ${o.amount} ${MATERIALS[o.mat].name.toLowerCase()}. There is none there, but ${P.name} has it: load the rocket hold before you go.${reward}`;
+  const big = o.landmark ? ` ${o.name} is a big landmark world, and its river is dammed up: clear it to let the water flow.` : '';
+  if (o.type === 'relic') return big + `"Something hums inside a great rock on ${o.name}." Repair the hut's broken scanner to find it.${reward}`;
+  if (o.type === 'help') return big + `"${o.critter} is trapped under a boulder on ${o.name}! Please help." The hut's scanner can find them.${reward}`;
+  return big + `${o.name} needs ${o.amount} ${MATERIALS[o.mat].name.toLowerCase()}. There is none there, but ${P.name} has it: load the rocket hold before you go.${reward}`;
 }
 export const offerIcon = (t) => (t === 'relic' ? '📜' : t === 'help' ? '🆘' : '📦');
 
@@ -105,3 +114,9 @@ export function relicsHTML(game) {
   }
   return h;
 }
+
+// sectors: five worlds each, the fifth a big landmark world
+export const sectorOf = (planet) => Math.floor(planet / 5) + 1;
+export const worldInSector = (planet) => (planet % 5) + 1;
+export const SECTOR_NAMES = ['Ember Reach', 'Tidewell', 'The Lantern Drift', 'Hollowmere', 'Starfall Verge', 'The Quiet Shoal'];
+export const sectorName = (planet) => SECTOR_NAMES[(sectorOf(planet) - 1) % SECTOR_NAMES.length] + (sectorOf(planet) > SECTOR_NAMES.length ? ' ' + (Math.floor((sectorOf(planet) - 1) / SECTOR_NAMES.length) + 1) : '');
