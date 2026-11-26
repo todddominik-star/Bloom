@@ -318,7 +318,7 @@ function pickItems(gen, rnd, A, B, C, D, E, F) {
   const it = { K2: 'polishedCrystal', S2: 'goldBar', A3: 'powerCore', kIn: { [B]: 2, [C]: 2 }, sIn: { [D]: 2, [A]: 1 }, kName: 'Kiln', sName: 'Smelter' };
   if (gen < 3) return it;
   const tryPairs = (pairs, avoid, amounts, usedPair) => {
-    pairs = pairs.sort(() => rnd() - 0.5).filter(([x, y]) => !usedPair || !(usedPair.includes(x) && usedPair.includes(y)));
+    pairs = fyShuffle(pairs, rnd).filter(([x, y]) => !usedPair || !(usedPair.includes(x) && usedPair.includes(y)));
     for (const [x, y] of pairs) { const o = level2(x, y).find((k) => !avoid.includes(k)); if (o) return { out: o, inp: { [x]: amounts[0], [y]: amounts[1] }, pair: [x, y] }; }
     for (const [x, y] of pairs) { const o = fallback2(x, y, avoid); if (o) return { out: o, inp: { [x]: amounts[0], [y]: amounts[1] }, pair: [x, y] }; }
     return null;
@@ -341,3 +341,7 @@ function pickItems(gen, rnd, A, B, C, D, E, F) {
   }
   return it;
 }
+
+// a shuffle that uses the same number of random draws on every browser (sort() with a random
+// comparator doesn't, and a planet must come out identical on every device)
+function fyShuffle(arr, rnd) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }

@@ -496,3 +496,37 @@ v16 — each planet's own items, bigger landmark worlds, two fixes
   leave a landmark until the dam is cleared and the tower is lit.
 - Older planets (gen 1/2) keep their items so saves don't change.
 - Tests: t21.mjs (item survey over 40 planets), t22.py.
+
+v17 — relic assembly and relic levels, blueprints on demand, right-sized supply hopper, planet colours
+- COLOURS: on teal and dusk planets, wood (icon, flying pieces) and tree trunks
+  take the planet's colour (purple trees → purple wood). Polished crystal takes
+  the colour of the crystal it's made from. Names stay the same. (MATERIALS is
+  tinted at load; each planet is its own page load.)
+- 50% ALIVE: one message: the rocket is unlocked, what it needs, how blueprints
+  work, and that the rocket hold is open for deliveries.
+- BLUEPRINTS ON DEMAND: the rocket keeps them. Standing on the white circle
+  (after 50%) hands out only the blueprints whose machine is MAX and not yet
+  reprogrammed. Nothing lands in the bag early.
+- SUPPLY HOPPER: a machine making a rocket supply only accepts ingredients for
+  what's still needed (rocket need − paid − carried − already made), so 12
+  crystals in the bag → it takes 4-5, not 10.
+- RELIC ASSEMBLY: the last piece no longer switches the tool on. The workbench
+  comes back (even if every tool is MAX) with a gold disc: step on it, the
+  pieces fly in and spin together, a flash, the finished relic rises, then it
+  works. game.assembled[k] = planet index (older saves: finished sets count
+  as assembled).
+- RELIC LEVELS: one relic upgrade per planet at the workbench disc (blue), never
+  on the planet where that relic was assembled. Chosen for you: every
+  assembled relic gets level 1 before any gets level 2 (max 3). Costs use
+  the planet's own level 2/3 items. Effects:
+    pick/axe: L1 swings 2x (instead of 1.5x), L2 each swing also hits a
+      neighbouring node of the same kind, L3 +1 extra every swing
+    suit: L1 air refills twice as fast in bubbles, L2 triple air, L3 walk faster
+    bag: L1 +25, L2 +25 more, L3 collects from trays/extractors from farther
+  The galaxy relic list shows "assemble it at the workbench" / "level n/3".
+- FIX (important): planet generation used sort() with a random comparator in
+  the new v16 item code, which gives different planets in different browsers
+  (Node and Chromium disagreed). Now a fixed Fisher-Yates shuffle everywhere,
+  so a planet comes out identical on every device. Gen-3 planets made under
+  v16 may come out different once (gen 1/2 planets were never affected).
+- Test: t23.py.

@@ -30,7 +30,8 @@ export function makeOffers(game, P, generatePlanet) {
     if (k) usedTools.add(k);
     return k;
   };
-  const types = ['relic', 'help', 'delivery'].sort(() => r() - 0.5);
+  const types = ['relic', 'help', 'delivery'];
+  for (let i = types.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [types[i], types[j]] = [types[j], types[i]]; }   // same draws on every browser
   const offers = [];
   for (const type of types) {
     let best = null;
@@ -110,7 +111,7 @@ export function relicsHTML(game) {
   let h = '';
   for (const [k, R] of Object.entries(RELICS)) {
     const have = game.relics?.[k] || 0, done = have >= R.pieces.length;
-    h += `<div class="relic${done ? ' done' : ''}"><b>${R.name}</b><span class="pips">${R.pieces.map((p, i) => `<i title="${p}" style="${i < have ? `background:${R.color}` : ''}"></i>`).join('')}</span><span class="rfx">${done ? '✓ ' + R.effect : `${have}/${R.pieces.length} · ${R.effect}`}</span></div>`;
+    h += `<div class="relic${done ? ' done' : ''}"><b>${R.name}</b><span class="pips">${R.pieces.map((p, i) => `<i title="${p}" style="${i < have ? `background:${R.color}` : ''}"></i>`).join('')}</span><span class="rfx">${!done ? `${have}/${R.pieces.length} · ${R.effect}` : game.assembled && game.assembled[k] != null ? `✓ ${R.effect}${game.relicLv && game.relicLv[k] ? ` · level ${game.relicLv[k]}/3` : ''}` : 'All pieces found: assemble it at the workbench'}</span></div>`;
   }
   return h;
 }
