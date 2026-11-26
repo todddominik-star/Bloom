@@ -18,7 +18,7 @@ export const LOOKS = {
 // try seeds until maxing every bubble really covers the whole planet (almost always the first)
 // gen: the generator version. 1 = the first planets (kept as they were, so a planet already being
 // played never changes); 2 = v14: new materials, landmark worlds every 5th planet
-export const GEN_VERSION = 2;
+export const GEN_VERSION = 3;   // 3 = v16: each planet's own level 2/3 items; landmark worlds get 6 raws and 6 machines
 export const isLandmark = (index) => index % 5 === 4;
 export function generatePlanet(seed, index, gen = GEN_VERSION) {
   let P = null;
@@ -61,6 +61,16 @@ function makePlanet(seed, index, gen) {
   const R = (cost) => { const o = {}; for (const [k, n] of Object.entries(cost)) o[roles[k] || k] = (o[roles[k] || k] || 0) + n; return sc(o); };
 
   const landmark = gen >= 2 && isLandmark(index);
+  // landmark worlds (gen 3): two more raw materials, found all over the planet
+  let E = null, F = null;
+  if (landmark && gen >= 3) {
+    const extra = shuffle(['wood', 'stone', 'redCrystal', 'sand', 'ash', 'ice', 'mushroom', 'gold', 'greenCrystal', 'carbon', 'obsidian', 'blueCrystal', 'purpleCrystal', 'uranium'].filter((m) => ![A, B, C, D].includes(m)));
+    E = extra[0]; F = extra[1];
+    roles.E = E; roles.F = F;
+  }
+  // ---- what this planet's machines make (gen 3): named for what goes in, so sand makes glass and
+  // carbon makes diamonds. Older planets keep polished crystal / gold bar / power core.
+  const items = pickItems(gen, rnd, A, B, C, D, E, F);
   const radius = landmark ? 124 + Math.floor(rnd() * 8) : 92 + Math.floor(rnd() * 8);
   const lookName = pick(['teal', 'dusk', 'sand', 'teal', 'dusk']);
   const name = NAMES[Math.floor(rnd() * NAMES.length)];
@@ -150,12 +160,13 @@ function makePlanet(seed, index, gen) {
   }
   gensP.forEach((g) => placed.push({ x: g.x, z: g.z, r: 4 }));
   const GEN = [['A', 'B'], ['B', 'C'], ['C', 'D'], ['D', 'C']];
+  const { K2, S2, A3 } = items;
   const genCost = (tier, step) => {
     const [a, b] = GEN[tier];
     if (step === 0) return R({ [a]: 8 + 3 * tier, [b]: 5 + 2 * tier });
     if (step === 1) return R({ [a]: 14 + 4 * tier, [b]: 9 + 3 * tier });
-    if (step === 2) return { polishedCrystal: tier < 2 ? 1 : 2, goldBar: tier < 3 ? 1 : 2 };
-    return { powerCore: tier < 3 ? 1 : 2 };
+    if (step === 2) return { [K2]: tier < 2 ? 1 : 2, [S2]: tier < 3 ? 1 : 2 };
+    return { [A3]: tier < 3 ? 1 : 2 };
   };
   const generators = gensP.map((g, i) => {
     const tier = Math.min(3, Math.floor(Math.hypot(g.x - home.x, g.z - home.z) / 40));
@@ -185,16 +196,31 @@ function makePlanet(seed, index, gen) {
     const used = crossings.length ? crossings[0] : [];
     const cand = inPlanet.filter((p) => used.every((u) => Math.hypot(u[0] - p[0], u[1] - p[1]) > 25)).sort((p, q) => Math.hypot(p[0] - start.x, p[1] - start.z) - Math.hypot(q[0] - start.x, q[1] - start.z));
     const at = cand[0] || inPlanet[Math.floor(inPlanet.length / 2)];
-    dam = { at, cost: { ...R({ A: 24, B: 18, C: 8 }), polishedCrystal: 4 } };
+    dam = { at, cost: { ...R({ A: 24, B: 18, C: 8 }), [K2]: 4 } };
   }
 
   // ---- machines, astronauts, resources
   const refHome1 = find(1, 7, start, 40) || find(1, 7), refHome2 = find(1, 7, start, 50) || find(1, 7), refFar = find(-1, 7) || find(0, 7);
   const refiners = [
-    { id: 'kiln', name: 'Kiln', ...refHome1, repair: R({ B: 20, A: 12 }), inputs: { [B]: 2, [C]: 2 }, output: 'polishedCrystal', secs: 6, hold: 10, store: 10, upgrades: [R({ B: 20, C: 14 }), { polishedCrystal: 4, goldBar: 3 }] },
-    { id: 'smelter', name: 'Smelter', ...refHome2, repair: R({ B: 18, C: 12 }), inputs: { [D]: 2, [A]: 1 }, output: 'goldBar', secs: 7, hold: 10, store: 10, upgrades: [R({ B: 18, D: 10 }), { goldBar: 4, polishedCrystal: 3 }] },
-    { id: 'assembler', name: 'Assembler', ...refFar, repair: { ...R({ B: 20 }), polishedCrystal: 3, goldBar: 3 }, inputs: { polishedCrystal: 1, goldBar: 1 }, output: 'powerCore', secs: 10, hold: 6, store: 6, upgrades: [{ polishedCrystal: 5, goldBar: 5 }, { powerCore: 2, ...R({ D: 14 }) }] },
+    { id: 'kiln', name: items.kName, ...refHome1, repair: R({ B: 20, A: 12 }), inputs: items.kIn, output: K2, secs: 6, hold: 10, store: 10, upgrades: [R({ B: 20, C: 14 }), { [K2]: 4, [S2]: 3 }] },
+    { id: 'smelter', name: items.sName, ...refHome2, repair: R({ B: 18, C: 12 }), inputs: items.sIn, output: S2, secs: 7, hold: 10, store: 10, upgrades: [R({ B: 18, D: 10 }), { [S2]: 4, [K2]: 3 }] },
+    { id: 'assembler', name: 'Assembler', ...refFar, repair: { ...R({ B: 20 }), [K2]: 3, [S2]: 3 }, inputs: { [K2]: 1, [S2]: 1 }, output: A3, secs: 10, hold: 6, store: 6, upgrades: [{ [K2]: 5, [S2]: 5 }, { [A3]: 2, ...R({ D: 14 }) }] },
   ];
+  // landmark worlds: a third level-2 machine (using the extra raws), a second level-3 machine and
+  // the beacon works, which makes the level-4 star beacon for the landmark monument
+  let monument = null;
+  if (E) {
+    const { M2, M3 } = items;
+    const p1 = find(0, 7) || find(0, 7), p2 = find(0, 7) || find(0, 7), p3 = find(-1, 7) || find(0, 7);
+    refiners.push(
+      { id: 'mill', name: items.mName, ...p1, repair: { [E]: 16, [B]: 12 }, inputs: items.mIn, output: M2, secs: 7, hold: 10, store: 10, upgrades: [{ [E]: 18, [F]: 12 }, { [M2]: 4, [K2]: 3 }] },
+      { id: 'workshop', name: 'Workshop', ...p2, repair: { [F]: 14, [S2]: 3, [M2]: 3 }, inputs: { [S2]: 1, [M2]: 1 }, output: M3, secs: 10, hold: 6, store: 6, upgrades: [{ [S2]: 5, [M2]: 5 }, { [M3]: 2, [E]: 14 }] },
+      { id: 'beaconWorks', name: 'Beacon works', ...p3, repair: { ...R({ D: 16 }), [A3]: 2, [M3]: 2 }, inputs: { [A3]: 1, [M3]: 1 }, output: 'starBeacon', secs: 14, hold: 4, store: 4, upgrades: [{ [A3]: 3, [M3]: 3 }, { starBeacon: 1, [F]: 16 }] },
+    );
+    for (const r of refiners.slice(3)) { r.repair = sc(r.repair); r.upgrades = r.upgrades.map(sc); }
+    const mp = find(1, 5, rocketP, 16) || find(1, 5, start, 30) || find(0, 5);
+    monument = { x: mp.x, z: mp.z, cost: sc({ starBeacon: 3, [E]: 14, [F]: 14 }) };
+  }
   const exC = find(1, 4, start, 55) || find(1, 4), exD = find(-1, 4) || find(0, 4);
   const extractors = [
     { id: 'exC', ...exC, mat: C, build: R({ A: 14, B: 8 }), levels: [{ every: 5, cap: 10 }, { every: 3.5, cap: 20 }, { every: 2.4, cap: 30 }], costs: [R({ A: 16, B: 12 }), R({ B: 18, D: 6 })] },
@@ -214,14 +240,16 @@ function makePlanet(seed, index, gen) {
   for (let i = 0; i < 3; i++) zone(C, -1);
   for (let i = 0; i < 6; i++) zone(D, -1);
   zone(D, 1);
+  if (E) for (let i = 0; i < 5; i++) { zone(E, 0); zone(F, 0); }
   const rocks = [];
   for (let i = 0; i < 10; i++) { const p = find(0, 3); if (p) rocks.push([p.x, p.z]); }
 
   return {
     name, seed, index, roles, gen, landmark, look: LOOKS[lookName], lookName,
     radius,
-    materials: [A, B, C, D],
-    refined: ['polishedCrystal', 'goldBar', 'powerCore', 'heatShield'],
+    materials: E ? [A, B, C, D, E, F] : [A, B, C, D],
+    refined: [...new Set(refiners.map((r) => r.output)), 'heatShield'],
+    monument,
     start: { x: +start.x.toFixed(1), z: +start.z.toFixed(1) },
     restoreGoal: 0.5,
     airDrain: 1 + 0.15 * index,
@@ -235,14 +263,81 @@ function makePlanet(seed, index, gen) {
     shed: { x: +shedP.x.toFixed(1), z: +shedP.z.toFixed(1), levels: [
       { cost: R({ A: 16, B: 10 }), stage: 0 },
       { cost: R({ A: 20, C: 12 }), stage: 1 },
-      { cost: { ...R({ D: 12 }), polishedCrystal: 4 }, stage: 2 },
+      { cost: { ...R({ D: 12 }), [K2]: 4 }, stage: 2 },
     ] },
-    rocket: { x: +rocketP.x.toFixed(1), z: +rocketP.z.toFixed(1), cost: { ...R({ B: 30 }), polishedCrystal: 4, goldBar: 4, powerCore: 3, heatShield: 1 } },
+    rocket: { x: +rocketP.x.toFixed(1), z: +rocketP.z.toFixed(1), cost: { ...R({ B: 30 }), [K2]: 4, [S2]: 4, [A3]: 3, heatShield: 1 } },
     // the hut: repair it, upgrade it twice; at MAX, with both astronauts' parts, it makes the heat shield
     // the two lost astronauts each carry half of the shield, so the hut's own costs stay light
-    hut: { x: +hutP.x.toFixed(1), z: +hutP.z.toFixed(1), levels: [R({ A: 16, B: 10 }), { ...R({ C: 12 }), polishedCrystal: 2 }, { goldBar: 3 }], gives: 'heatShield' },
+    hut: { x: +hutP.x.toFixed(1), z: +hutP.z.toFixed(1), levels: [R({ A: 16, B: 10 }), { ...R({ C: 12 }), [K2]: 2 }, { [S2]: 3 }], gives: 'heatShield' },
     astronauts,
     zones,
     rocks,
   };
+}
+
+// ---- the item recipes (gen 3). Level 2: two raws. Level 3: two level-2 items. Level 4: the star beacon.
+const isCrystal = (m) => /Crystal$/.test(m);
+const is = (...ids) => (m) => ids.includes(m);
+const pairOf = (x, y, f, g) => (f(x) && g(y)) || (f(y) && g(x));
+// every match for a pair (a pair can make more than one thing)
+function level2(x, y) {
+  const o = [];
+  if (pairOf(x, y, is('sand'), is('ash', 'wood', 'carbon', 'uranium'))) o.push('glassOrb');
+  if (pairOf(x, y, is('carbon'), is('stone', 'obsidian', 'ice'))) o.push('diamond');
+  if (pairOf(x, y, is('stone'), is('sand', 'ash', 'carbon'))) o.push('brick');
+  if (pairOf(x, y, is('gold', 'uranium'), is('stone', 'carbon', 'ash', 'obsidian'))) o.push('alloyIngot');
+  if (pairOf(x, y, is('wood'), is('mushroom'))) o.push('ropeCoil');
+  if (pairOf(x, y, is('ice'), (m) => isCrystal(m) || m === 'sand')) o.push('iceLens');
+  if (pairOf(x, y, isCrystal, (m) => ['stone', 'ice', 'obsidian', 'sand'].includes(m) || isCrystal(m))) o.push('crystalPrism');
+  if (pairOf(x, y, is('obsidian'), is('wood', 'stone', 'ash'))) o.push('obsidianBlade');
+  return o;
+}
+// nothing fits: polished crystal if there's a crystal in it, gold bar if there's gold or uranium
+function fallback2(x, y, avoid) {
+  const o = [];
+  if (isCrystal(x) || isCrystal(y)) o.push('polishedCrystal');
+  if ([x, y].some(is('gold', 'uranium'))) o.push('goldBar');
+  return o.find((k) => !avoid.includes(k)) || null;
+}
+const L3_ANY = ['lantern', 'solarPanel', 'waterPump', 'seedVault', 'gearSet', 'crystalBattery'];
+function level3(x, y, rnd, avoid) {
+  const metal = is('alloyIngot', 'goldBar');
+  const opts = [];
+  if (pairOf(x, y, is('glassOrb'), metal)) opts.push('lantern');
+  if (pairOf(x, y, is('brick'), is('glassOrb'))) opts.push('seedVault');
+  if (pairOf(x, y, is('diamond'), metal)) opts.push('gearSet');
+  if (pairOf(x, y, is('brick'), metal)) opts.push('waterPump');
+  if (pairOf(x, y, is('crystalPrism', 'iceLens', 'polishedCrystal'), metal)) opts.push(rnd() < 0.5 ? 'solarPanel' : 'crystalBattery');
+  const ok = opts.filter((o) => o !== avoid);
+  if (ok.length) return ok[0];
+  const pool = L3_ANY.filter((o) => o !== avoid);
+  return pool[Math.floor(rnd() * pool.length)];
+}
+const MACHINE_NAME = { glassOrb: 'Glassworks', brick: 'Brick kiln', diamond: 'Diamond press', alloyIngot: 'Smelter', ropeCoil: 'Ropewalk', iceLens: 'Lens grinder', crystalPrism: 'Crystal cutter', obsidianBlade: 'Blade forge', polishedCrystal: 'Kiln', goldBar: 'Smelter' };
+function pickItems(gen, rnd, A, B, C, D, E, F) {
+  const it = { K2: 'polishedCrystal', S2: 'goldBar', A3: 'powerCore', kIn: { [B]: 2, [C]: 2 }, sIn: { [D]: 2, [A]: 1 }, kName: 'Kiln', sName: 'Smelter' };
+  if (gen < 3) return it;
+  const tryPairs = (pairs, avoid, amounts, usedPair) => {
+    pairs = pairs.sort(() => rnd() - 0.5).filter(([x, y]) => !usedPair || !(usedPair.includes(x) && usedPair.includes(y)));
+    for (const [x, y] of pairs) { const o = level2(x, y).find((k) => !avoid.includes(k)); if (o) return { out: o, inp: { [x]: amounts[0], [y]: amounts[1] }, pair: [x, y] }; }
+    for (const [x, y] of pairs) { const o = fallback2(x, y, avoid); if (o) return { out: o, inp: { [x]: amounts[0], [y]: amounts[1] }, pair: [x, y] }; }
+    return null;
+  };
+  const k = tryPairs([[B, C], [A, B], [A, C]], [], [2, 2]);
+  if (k) { it.K2 = k.out; it.kIn = k.inp; }
+  // the second machine prefers the far material D, but any other pair will do
+  const sm = tryPairs([[D, A], [D, B], [D, C]], [it.K2], [2, 1]) || tryPairs([[A, B], [B, C], [A, C]], [it.K2], [2, 1], k && k.pair);
+  if (sm) { it.S2 = sm.out; it.sIn = sm.inp; }
+  it.kName = MACHINE_NAME[it.K2]; it.sName = MACHINE_NAME[it.S2];
+  if (it.sName === it.kName) it.sName = 'Forge';
+  it.A3 = level3(it.K2, it.S2, rnd, null);
+  if (E) {
+    const m = tryPairs([[E, F], [E, A], [E, B], [F, A], [F, B], [E, C], [F, C], [E, D], [F, D]], [it.K2, it.S2], [2, 2]);
+    if (m) { it.M2 = m.out; it.mIn = m.inp; }
+    else { it.M2 = ['crystalPrism', 'alloyIngot', 'brick', 'glassOrb'].find((q) => ![it.K2, it.S2].includes(q)); it.mIn = { [E]: 2, [F]: 2 }; }
+    it.mName = MACHINE_NAME[it.M2] || 'Mill';
+    if ([it.kName, it.sName].includes(it.mName)) it.mName = 'Mill';
+    it.M3 = level3(it.S2, it.M2, rnd, it.A3);
+  }
+  return it;
 }

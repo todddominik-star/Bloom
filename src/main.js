@@ -782,16 +782,56 @@ if (P.dam) {
   });
   dam.x = bx; dam.z = bz;   // the map marker sits by the sign
 }
+// --- landmark monument: the star beacon tower, built from level-4 star beacons
+let monument = null;
+if (P.monument) {
+  const { x, z } = P.monument;
+  monument = { x, z, paid: {}, built: false, model: new THREE.Group() };
+  const base = mesh(new THREE.CylinderGeometry(1.6, 1.9, 0.5, 8), '#b9c0cc'); base.position.y = 0.25;
+  const tower = mesh(new THREE.CylinderGeometry(0.45, 0.9, 5, 8), '#e6e9f0'); tower.position.y = 2.9;
+  const ring = mesh(new THREE.TorusGeometry(0.75, 0.1, 6, 16), '#e0a020'); ring.rotation.x = Math.PI / 2; ring.position.y = 5.3;
+  const light = new THREE.Mesh(new THREE.SphereGeometry(0.7, 14, 10), new THREE.MeshBasicMaterial({ color: '#fff07a' })); light.position.y = 6;
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 1.2, 40, 10, 1, true), new THREE.MeshBasicMaterial({ color: '#fff07a', transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide })); beam.position.y = 26;
+  const frame = mesh(new THREE.CylinderGeometry(0.5, 0.95, 5, 8, 1, true), '#7d8a9c', { wireframe: true }); frame.position.y = 2.9;
+  monument.model.add(base, tower, ring, light, beam, frame); monument.model.userData = { tower, ring, light, beam, frame };
+  monument.model.position.set(x, 0, z); scene.add(monument.model);
+  colliders.push({ x, z, r: 1.9 });
+  monument.site = addSite({
+    x: x + 2.6, z: z + 1.6, reach: 1.6,
+    title: () => (monument.built ? 'Star beacon tower' : 'Landmark monument'),
+    doneText: 'SHINING ✦',
+    cost: () => { if (monument.built) return null; const left = {}; for (const [m, n] of Object.entries(P.monument.cost)) left[m] = n - (monument.paid[m] || 0); return left; },
+    pay: (m) => { monument.paid[m] = (monument.paid[m] || 0) + 1; refreshMonument(); },
+    extra: () => (monument.built ? '<span class="lock">Seen from every world in the sector</span>' : '<span class="lock">The Beacon works makes star beacons</span>'),
+    complete: () => {
+      monument.built = true; refreshMonument(); sfx.fanfare(); bloomPulse({ x, z });
+      toast(`The star beacon tower is lit! ${P.name} shines for the whole sector.`, true);
+      const k = Object.keys(RELICS).find((q) => !relicOn(q));
+      if (k) setTimeout(() => grantRelic(k), 3500);
+      save();
+    },
+  });
+}
+function refreshMonument() {
+  if (!monument) return;
+  const u = monument.model.userData, f = costTotal(monument.paid) / costTotal(P.monument.cost);
+  u.tower.visible = monument.built || f > 0.34; u.tower.scale.y = monument.built ? 1 : Math.max(0.2, f);
+  u.tower.position.y = 0.5 + 2.5 * u.tower.scale.y;
+  u.ring.visible = u.light.visible = u.beam.visible = monument.built;
+  u.frame.visible = !monument.built;
+}
+refreshMonument();
 function refreshDam() { if (!dam) return; dam.model.visible = !dam.cleared; dam.flowers.visible = dam.cleared; }
 
 // --- refining machines: a long machine with a LOAD end (west) and a PICKUP end (east)
 const refiners = P.refiners.map((def) => ({ ...def, repaired: false, paid: {}, loaded: {}, outs: {}, t: 0, level: 0, upPaid: {}, bp: false, mode: 0 }));
 // rocket blueprints: a MAX machine can be taught a second recipe for one of the rocket's supplies
 // (a level-1 and a level-2 item, or a level-2 and a level-3 item, merged)
+const outOf = (id) => (P.refiners.find((r) => r.id === id) || {}).output;
 const ALT = {
-  kiln: { bp: 'bpAir', inputs: { polishedCrystal: 1, [P.roles.A]: 2 }, output: 'airTank' },
-  smelter: { bp: 'bpFuel', inputs: { goldBar: 1, [P.roles.C]: 2 }, output: 'fuelCell' },
-  assembler: { bp: 'bpFood', inputs: { powerCore: 1, polishedCrystal: 1 }, output: 'foodPack' },
+  kiln: { bp: 'bpAir', inputs: { [outOf('kiln')]: 1, [P.roles.A]: 2 }, output: 'airTank' },
+  smelter: { bp: 'bpFuel', inputs: { [outOf('smelter')]: 1, [P.roles.C]: 2 }, output: 'fuelCell' },
+  assembler: { bp: 'bpFood', inputs: { [outOf('assembler')]: 1, [outOf('kiln')]: 1 }, output: 'foodPack' },
 };
 for (const rf of refiners) rf.alt = ALT[rf.id] || null;
 const rfIn = (rf) => (rf.mode && rf.alt ? rf.alt.inputs : rf.inputs);
@@ -980,7 +1020,7 @@ rocket.site = addSite({
   x: P.rocket.x, z: P.rocket.z, reach: 3.3,
   title: () => (rocket.done ? 'Rocket ready' : 'Rocket · restock'),
   doneText: 'READY',
-  locked: () => (restore < P.restoreGoal && !rocket.done ? `Bring ${Math.round(P.restoreGoal * 100)}% of the planet to life first (${pctAlive()}%)` : dam && !dam.cleared && !rocket.done ? 'Landmark world: clear the river dam first' : null),
+  locked: () => (restore < P.restoreGoal && !rocket.done ? `Bring ${Math.round(P.restoreGoal * 100)}% of the planet to life first (${pctAlive()}%)` : dam && !dam.cleared && !rocket.done ? 'Landmark world: clear the river dam first' : monument && !monument.built && !rocket.done ? 'Landmark world: light the star beacon tower first' : null),
   cost: () => { if (rocket.done) return null; const left = {}; for (const [m, n] of Object.entries(ROCKET_NEED)) left[m] = n - (rocket.paid[m] || 0); return left; },
   pay: (m) => { rocket.paid[m] = (rocket.paid[m] || 0) + 1; },
   complete: () => { rocket.done = true; sfx.fanfare(); toast('Rocket restocked! Launch whenever you are ready.', true); },
@@ -1402,7 +1442,7 @@ function updateSites(dt) {
     const c = s.cost();
     const near = Math.hypot(s.x - player.x, s.z - player.z) < s.reach;
     s.near = near;
-    if (!near || !c || !s.pay || (s.locked && s.locked())) continue;
+    if (!near || !c || !s.pay || (s.locked && s.locked()) || (s.hidden && s.hidden())) continue;   // nothing pays into a sign you can't see
     if (payT > 0) continue;
     const need = Object.entries(c).find(([m, n]) => n > 0 && (bag[m] || 0) > 0);
     if (!need) continue;
@@ -2101,7 +2141,7 @@ setTimeout(() => { if (!rocket.launched) offers(); }, 2500);   // so their reque
 const HOLD_CAP = 150;
 const HOLD_SPOT = { x: P.rocket.x + 0.75, z: P.rocket.z + 2.35 };   // the white circle on the pad rim
 const holdEl = document.getElementById('hold');
-let holdOpen = false;
+let holdOpen = false, holdLockedShown = false;
 const holdCount = () => Object.values(game.cargo).reduce((a, b) => a + b, 0);
 const bagOrder = () => [...new Set([...P.materials, ...P.refined, ...Object.keys(bag)])].filter((m) => MATERIALS[m]);
 // the hold only takes what a planet ahead has asked for (a delivery), and only as much as they asked
@@ -2111,6 +2151,7 @@ function holdWants() {
   return w;
 }
 function renderHold() {
+  if (restore < P.restoreGoal) { holdEl.innerHTML = `<div class="shead">Rocket hold</div><div class="shint">The hold opens once ${P.name} is ${Math.round(P.restoreGoal * 100)}% alive (${pctAlive()}% now)</div>`; return; }
   const want = holdWants();
   let html = `<div class="shead">Rocket hold</div>`;
   let rows = 0;
@@ -2126,7 +2167,7 @@ function renderHold() {
 }
 holdEl.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-m]');
-  if (!btn) return;
+  if (!btn || restore < P.restoreGoal) return;
   const m = btn.dataset.m, name = MATERIALS[m].name.toLowerCase();
   const room = Math.max(0, (holdWants()[m] || 0) - (game.cargo[m] || 0));
   const put = Math.min(bag[m] || 0, room, HOLD_CAP - holdCount());
@@ -2140,7 +2181,8 @@ holdEl.addEventListener('click', (e) => {
 });
 function updateHold() {
   const open = playing && !boarding && !rocket.launching && Math.hypot(HOLD_SPOT.x - player.x, HOLD_SPOT.z - player.z) < 1.15;
-  if (open && !holdOpen) renderHold();
+  if (open && (!holdOpen || (holdLockedShown && restore >= P.restoreGoal))) renderHold();
+  holdLockedShown = open && restore < P.restoreGoal;
   holdOpen = open;
   holdEl.classList.toggle('gone', !open);
 }
@@ -2159,6 +2201,8 @@ function computeRetired() {
   for (let k = shed.level + 1; k < P.shed.levels.length; k++) costLeft(P.shed.levels[k].cost, k === shed.level + 1 ? shed.paid : null, add);
   for (const [key, u] of Object.entries(UPGRADES)) for (let k = tools[key]; k < u.costs.length; k++) costLeft(u.costs[k], k === tools[key] ? toolPaid[key] : null, add);
   if (!rocket.done) costLeft(ROCKET_NEED, rocket.paid, add);
+  if (monument && !monument.built) costLeft(P.monument.cost, monument.paid, add);
+  if (dam && !dam.cleared) costLeft(P.dam.cost, dam.paid, add);
   for (const [m, n] of Object.entries(holdWants())) if ((game.cargo[m] || 0) < n) need.add(m);
   if (hut) for (let k = hut.level + 1; k < P.hut.levels.length; k++) costLeft(P.hut.levels[k], k === hut.level + 1 ? hut.paid : null, add);
   // a machine's inputs are needed for as long as its product is
@@ -2264,6 +2308,7 @@ function drawMap() {
   mark(P.rocket.x, P.rocket.z, 'tri', rocket.done);
   if (hut) mark(P.hut.x, P.hut.z, 'house', hutMax());
   if (dam) mark(dam.x, dam.z, 'bar', dam.cleared);
+  if (monument) { g.save(); g.translate(px(monument.x), pz(monument.z)); g.fillStyle = monument.built ? '#ffd23f' : '#ff5a5a'; g.strokeStyle = '#fff'; g.lineWidth = 1.4 * dpr; g.beginPath(); g.moveTo(0, -R * 1.8); g.lineTo(R * 0.7, R); g.lineTo(-R * 0.7, R); g.closePath(); g.fill(); g.stroke(); g.restore(); }
   // the rock the scanner found: a gold star until it's open
   if (targetRock && ms.found && !ms.cracked) {
     g.save(); g.translate(px(targetRock.x), pz(targetRock.z)); g.fillStyle = '#ffd23f'; g.strokeStyle = '#fff'; g.lineWidth = 1.6 * dpr; g.beginPath();
@@ -2316,7 +2361,7 @@ function save() {
     bridges: bridges.map((b) => ({ repaired: b.repaired, paid: b.paid })),
     refiners: refiners.map((r) => ({ repaired: r.repaired, paid: r.paid, loaded: r.loaded, outs: r.outs, t: r.t, level: r.level, upPaid: r.upPaid, bp: r.bp, mode: r.mode })),
     rocket: { paid: rocket.paid, done: rocket.done, launched: rocket.launched, bpGiven: rocket.bpGiven },
-    told75, dam: dam ? { cleared: dam.cleared, paid: dam.paid } : null,
+    told75, dam: dam ? { cleared: dam.cleared, paid: dam.paid } : null, monument: monument ? { built: monument.built, paid: monument.paid } : null,
     lost: lost.map((a) => ({ state: a.state === 'following' ? 'waiting' : a.state, job: a.job, name: a.name, x: a.x, z: a.z, carryPart: !!a.carryPart })),
     shed: { level: shed.level, paid: shed.paid, store: shed.store }, toolPaid, seen: packSeen(),
     hut: hut ? { level: hut.level, paid: hut.paid, shield: hut.shield, taken: hut.taken, parts: hut.parts } : null,
@@ -2337,6 +2382,7 @@ function load() {
   (d.refiners || []).forEach((s, i) => { const r = refiners[i]; if (r) { Object.assign(r, { repaired: s.repaired, paid: s.paid || {}, loaded: s.loaded || {}, outs: s.outs || { [r.output]: s.out || 0 }, t: s.t || 0, level: s.level || 0, upPaid: s.upPaid || {}, bp: !!s.bp, mode: s.mode || 0 }); refreshRefiner(r); if (r.discs) r.discs.forEach((q) => renderSite(q.site)); } });
   rocket.paid = d.rocket.paid || {}; rocket.done = d.rocket.done; rocket.launched = !!d.rocket.launched; rocket.bpGiven = !!d.rocket.bpGiven;
   told75 = !!d.told75;
+  if (monument && d.monument) { monument.built = !!d.monument.built; monument.paid = d.monument.paid || {}; refreshMonument(); }
   if (dam && d.dam) { dam.cleared = !!d.dam.cleared; dam.paid = d.dam.paid || {}; refreshDam(); }
   if (d.shed) { shed.level = d.shed.level; shed.paid = d.shed.paid || {}; Object.assign(shed.store, d.shed.store || {}); refreshShed(); }
   if (d.toolPaid) Object.assign(toolPaid, d.toolPaid);
@@ -2519,7 +2565,7 @@ if (arriving) {
   showTravel(arriving);
   document.getElementById('travel-to').textContent = `Arriving at ${P.name}`;
   startEl.classList.add('gone');
-  setTimeout(() => { begin(); toast(`Welcome to ${P.name}. Find the two lost astronauts and fix the hut by the rocket.`, true); if (MISSION && !ms.done) setTimeout(() => toast(missionIntro(), true), 6500); if (dam && !dam.cleared) setTimeout(() => toast(`${P.name} is a landmark world, the biggest in this sector. A dam of logs and boulders chokes its river: clear it before the rocket can leave.`, true), 14000); document.documentElement.classList.remove('traveling'); document.getElementById('travel').classList.add('fade'); setTimeout(() => document.getElementById('travel').classList.add('gone'), 900); }, 1300);
+  setTimeout(() => { begin(); toast(`Welcome to ${P.name}. Find the two lost astronauts and fix the hut by the rocket.`, true); if (MISSION && !ms.done) setTimeout(() => toast(missionIntro(), true), 6500); if (dam && !dam.cleared) setTimeout(() => toast(`${P.name} is a landmark world, the biggest in this sector. A dam of logs and boulders chokes its river, and the star beacon tower waits to be lit: do both before the rocket can leave.`, true), 14000); document.documentElement.classList.remove('traveling'); document.getElementById('travel').classList.add('fade'); setTimeout(() => document.getElementById('travel').classList.add('gone'), 900); }, 1300);
 }
 document.getElementById('fresh').addEventListener('click', startOver);
 // ------------------------------------------------------------------ the galaxy: where you've been and where to next

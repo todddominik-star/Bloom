@@ -67,7 +67,7 @@ export function rewardTool(o, game) {
 export function offerText(o, P, game) {
   const k = rewardTool(o, game);
   const reward = k ? ` Reward: a relic piece, the ${RELICS[k].pieces[game.relics?.[k] || 0]} of the ${RELICS[k].name}.` : '';
-  const big = o.landmark ? ` ${o.name} is a big landmark world, and its river is dammed up: clear it to let the water flow.` : '';
+  const big = o.landmark ? ` ${o.name} is a big landmark world, and its river is dammed up, and it has six raw materials and a star beacon tower to light.` : '';
   if (o.type === 'relic') return big + `"Something hums inside a great rock on ${o.name}." Repair the hut's broken scanner to find it.${reward}`;
   if (o.type === 'help') return big + `"${o.critter} is trapped under a boulder on ${o.name}! Please help." The hut's scanner can find them.${reward}`;
   return big + `${o.name} needs ${o.amount} ${MATERIALS[o.mat].name.toLowerCase()}. There is none there, but ${P.name} has it: load the rocket hold before you go.${reward}`;

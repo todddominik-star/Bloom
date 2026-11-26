@@ -472,3 +472,27 @@ v15 — hut becomes a home, blueprints at 50%
   With both done (or just the shield on non-scanner planets) the sign reads
   "A home on <planet>: astronauts can make a new life here now…", no MAX tag.
 - Test: t20.py.
+
+v16 — each planet's own items, bigger landmark worlds, two fixes
+- FIX: no sign takes payment while it's hidden (you could pay into a refinery
+  upgrade before the refinery was repaired and before its sign appeared).
+- FIX: the rocket hold stays shut until the planet is 50% alive (it says so
+  when you stand on the circle).
+- ITEMS (generator gen 3, planets flown to from v16 on): each planet's machines
+  make items named for what goes in. Level 2 (two raws): glass orb, brick,
+  crystal prism, alloy ingot, rope coil, diamond, ice lens, obsidian blade
+  (polished crystal / gold bar only as fallbacks). Level 3 (two level-2):
+  lantern, solar panel, water pump, gear set, seed vault, crystal battery
+  (power core retired from new planets). Machine names follow the item
+  (Glassworks, Brick kiln, Diamond press, Smelter, Ropewalk, Lens grinder,
+  Crystal cutter, Blade forge). Every cost (bubbles, hut, shed, dam, upgrades,
+  rocket blueprint recipes) uses that planet's items. Recipes in planetgen.js
+  level2()/level3()/pickItems().
+- LANDMARK WORLDS (gen 3): six raw materials (E, F found all over the planet),
+  six machines: the usual three plus a third level-2 machine (using E/F), the
+  Workshop (second level-3 item) and the Beacon works (level 4: star beacon =
+  the two level-3 items). The star beacon tower (near the rocket) takes 3 star
+  beacons + E + F; it lights a beam and gives a relic piece. The rocket can't
+  leave a landmark until the dam is cleared and the tower is lit.
+- Older planets (gen 1/2) keep their items so saves don't change.
+- Tests: t21.mjs (item survey over 40 planets), t22.py.
