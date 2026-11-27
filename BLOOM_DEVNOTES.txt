@@ -530,3 +530,25 @@ v17 — relic assembly and relic levels, blueprints on demand, right-sized suppl
   so a planet comes out identical on every device. Gen-3 planets made under
   v16 may come out different once (gen 1/2 planets were never affected).
 - Test: t23.py.
+
+AGREED FOR v18 (Todd, Nov 26) — NOT BUILT YET, more notes coming
+- ONE RELIC REWARD PER PLANET: on the galaxy map, pick the mission, then pick
+  its reward: a relic piece OR a relic upgrade (only offered when an assembled
+  relic has a level left; every assembled relic reaches level n before any
+  reaches n+1; a single relic can go L1, L2, L3 on consecutive planets).
+  The reward is earned by finishing the mission (option B). An upgrade pick
+  puts the upgrade sign on the workbench when the mission is done; no
+  separate per-planet upgrade sign any more.
+- ASSEMBLY stays separate: if a piece completes a set, the assembly animation
+  plays right away and the relic goes into service (no gold-disc step).
+- LANDMARKS: one relic reward like any planet (the mission's). Dam and tower
+  give no pieces; they count toward the landmark's gold badge (100% alive +
+  dam cleared + tower lit). A landmark badge counts as 1.
+- STELLAR AWARD: every 5 gold badges (any planets, any order) become one of 5
+  Stellar Award parts (message only). All 5 parts → one bonus pick in the
+  galaxy screen: any missing relic piece or the next upgrade in line; then a
+  new Stellar Award starts. Show progress under Relics in the galaxy screen
+  (badges n/5, award parts n/5).
+- Win screen: replace "You can come back... for the gold badge" (you can't go
+  back) with "Stay and finish for the gold badge, or fly on."
+- Later: a second round of relics with new abilities; more planet types.
