@@ -531,7 +531,7 @@ v17 — relic assembly and relic levels, blueprints on demand, right-sized suppl
   v16 may come out different once (gen 1/2 planets were never affected).
 - Test: t23.py.
 
-AGREED FOR v18 (Todd, Nov 26) — NOT BUILT YET, more notes coming
+AGREED FOR v18 (Todd, Nov 26) — BUILT in v18 (see below)
 - ONE RELIC REWARD PER PLANET: on the galaxy map, pick the mission, then pick
   its reward: a relic piece OR a relic upgrade (only offered when an assembled
   relic has a level left; every assembled relic reaches level n before any
@@ -552,3 +552,29 @@ AGREED FOR v18 (Todd, Nov 26) — NOT BUILT YET, more notes coming
 - Win screen: replace "You can come back... for the gold badge" (you can't go
   back) with "Stay and finish for the gold badge, or fly on."
 - Later: a second round of relics with new abilities; more planet types.
+
+v18 — one relic reward per planet, Stellar Award, landmark badges
+- Galaxy offers: each has reward chips: "◆ <next piece> (<set> n/N)" and, when an
+  assembled relic has a level left, "⬆ <relic> → level n" (the next in line:
+  every assembled relic reaches level n before any reaches n+1). Tap to choose
+  (default: the piece). Stored on the offer; flyTo copies it into the mission
+  (mission.reward = 'piece' | 'upgrade', mission.upKey).
+- The reward is earned by finishing the mission. An upgrade puts the blue disc
+  sign on the workbench (bench reappears even if all tools are MAX); paying it
+  levels the relic; ms.upgraded. The old automatic one-per-planet upgrade is gone.
+- Assembly: a piece that completes a set assembles by itself ~3.5 s later,
+  around the player (pieces spin in, flash, the relic rises) and goes into
+  service. No gold disc. Older saves with a finished-but-unassembled set
+  assemble a few seconds after loading.
+- Landmarks: dam and tower no longer give relic pieces; the landmark's gold
+  badge needs 100% alive + dam cleared + tower lit (message tells you what's
+  left). Counts as 1 badge.
+- Stellar Award: game.badges counts every gold badge (older journeys start from
+  the badges in the log). Every 5th badge: "part n of 5 of the Stellar Award";
+  25 badges: a "Stellar Award bonus" card in the galaxy: any missing next relic
+  piece, or the next upgrade in line, applied at once (game.bonusUsed). The
+  galaxy Relics section shows badge pips (n/5) and award parts (n/5).
+- Win screen: "Stay and finish <planet> for the gold badge, or fly on."
+- Fix: a sign drawn before the mission state existed crashed a new planet with
+  an upgrade reward (guarded).
+- Test: t24.py.

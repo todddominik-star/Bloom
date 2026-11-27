@@ -66,8 +66,7 @@ export function rewardTool(o, game) {
   return Object.keys(RELICS).find((k) => !relicDone(game, k)) || null;
 }
 export function offerText(o, P, game) {
-  const k = rewardTool(o, game);
-  const reward = k ? ` Reward: a relic piece, the ${RELICS[k].pieces[game.relics?.[k] || 0]} of the ${RELICS[k].name}.` : '';
+  const reward = '';   // the reward is chosen separately (piece or upgrade)
   const big = o.landmark ? ` ${o.name} is a big landmark world, and its river is dammed up, and it has six raw materials and a star beacon tower to light.` : '';
   if (o.type === 'relic') return big + `"Something hums inside a great rock on ${o.name}." Repair the hut's broken scanner to find it.${reward}`;
   if (o.type === 'help') return big + `"${o.critter} is trapped under a boulder on ${o.name}! Please help." The hut's scanner can find them.${reward}`;
@@ -111,7 +110,7 @@ export function relicsHTML(game) {
   let h = '';
   for (const [k, R] of Object.entries(RELICS)) {
     const have = game.relics?.[k] || 0, done = have >= R.pieces.length;
-    h += `<div class="relic${done ? ' done' : ''}"><b>${R.name}</b><span class="pips">${R.pieces.map((p, i) => `<i title="${p}" style="${i < have ? `background:${R.color}` : ''}"></i>`).join('')}</span><span class="rfx">${!done ? `${have}/${R.pieces.length} · ${R.effect}` : game.assembled && game.assembled[k] != null ? `✓ ${R.effect}${game.relicLv && game.relicLv[k] ? ` · level ${game.relicLv[k]}/3` : ''}` : 'All pieces found: assemble it at the workbench'}</span></div>`;
+    h += `<div class="relic${done ? ' done' : ''}"><b>${R.name}</b><span class="pips">${R.pieces.map((p, i) => `<i title="${p}" style="${i < have ? `background:${R.color}` : ''}"></i>`).join('')}</span><span class="rfx">${!done ? `${have}/${R.pieces.length} · ${R.effect}` : game.assembled && game.assembled[k] != null ? `✓ ${R.effect}${game.relicLv && game.relicLv[k] ? ` · level ${game.relicLv[k]}/3` : ''}` : 'All pieces found: assembling…'}</span></div>`;
   }
   return h;
 }
@@ -121,3 +120,22 @@ export const sectorOf = (planet) => Math.floor(planet / 5) + 1;
 export const worldInSector = (planet) => (planet % 5) + 1;
 export const SECTOR_NAMES = ['Ember Reach', 'Tidewell', 'The Lantern Drift', 'Hollowmere', 'Starfall Verge', 'The Quiet Shoal'];
 export const sectorName = (planet) => SECTOR_NAMES[(sectorOf(planet) - 1) % SECTOR_NAMES.length] + (sectorOf(planet) > SECTOR_NAMES.length ? ' ' + (Math.floor((sectorOf(planet) - 1) / SECTOR_NAMES.length) + 1) : '');
+
+// the next relic upgrade in line: every assembled relic reaches level n before any reaches n+1
+export function relicUpNext(game) {
+  const c = Object.keys(RELICS).filter((k) => relicDone(game, k) && game.assembled && game.assembled[k] != null && (game.relicLv?.[k] || 0) < 3);
+  if (!c.length) return null;
+  const lo = Math.min(...c.map((k) => game.relicLv?.[k] || 0));
+  return c.find((k) => (game.relicLv?.[k] || 0) === lo);
+}
+// gold badges → Stellar Award: every 5 badges make one of its 5 parts; all 5 parts → one bonus pick
+export const stellar = (game) => {
+  const b = game.badges || 0;
+  return { badges: b, towardPart: b % 5, parts: Math.floor(b / 5) % 5, bonus: Math.floor(b / 25) - (game.bonusUsed || 0) };
+};
+export function stellarHTML(game) {
+  const st = stellar(game);
+  const pips = (n, full, ch) => Array.from({ length: 5 }, (_, i) => `<span style="opacity:${i < n ? 1 : 0.25}">${ch}</span>`).join('');
+  return `<div class="relic"><b>Gold badges</b><span class="pips">${pips(st.towardPart, 5, '★')}</span><span class="rfx">${st.badges} earned · every 5 make a Stellar Award part</span></div>`
+    + `<div class="relic"><b>Stellar Award</b><span class="pips">${pips(st.parts, 5, '◆')}</span><span class="rfx">${st.parts}/5 parts · all 5 give a bonus relic piece or upgrade</span></div>`;
+}

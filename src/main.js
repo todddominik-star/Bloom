@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MATERIALS, SUPPLIES, icon, STAGE_CAP, STAGE_NAME } from './materials.js';
 import { PLANET1, NODE_MATERIAL } from './planet.js';
 import { generatePlanet, LOOKS, GEN_VERSION, isLandmark } from './planetgen.js';
-import { RELICS, relicDone, makeOffers, offerTitle, offerText, offerIcon, galaxySVG, relicsHTML, rewardTool, sectorOf, worldInSector, sectorName } from './journey.js';
+import { RELICS, relicDone, makeOffers, offerTitle, offerText, offerIcon, galaxySVG, relicsHTML, rewardTool, relicUpNext, stellar, stellarHTML, sectorOf, worldInSector, sectorName } from './journey.js';
 
 // ---- which planet are we on? Ember first, then generated planets. The journey (planet number,
 // its seed, the crew who came along, your tools and skills) lives in GAME_KEY; each planet has
@@ -790,8 +790,7 @@ if (P.dam) {
     complete: () => {
       dam.cleared = true; refreshDam(); sfx.fanfare(); bloomPulse({ x: dam.x, z: dam.z });
       toast('The dam breaks apart and the river runs free! Flowers spring up all along its banks.', true);
-      const k = Object.keys(RELICS).find((q) => !relicOn(q));
-      if (k) setTimeout(() => grantRelic(k), 3500);
+      checkBadge();
       save();
     },
   });
@@ -821,8 +820,7 @@ if (P.monument) {
     complete: () => {
       monument.built = true; refreshMonument(); sfx.fanfare(); bloomPulse({ x, z });
       toast(`The star beacon tower is lit! ${P.name} shines for the whole sector.`, true);
-      const k = Object.keys(RELICS).find((q) => !relicOn(q));
-      if (k) setTimeout(() => grantRelic(k), 3500);
+      checkBadge();
       save();
     },
   });
@@ -1085,10 +1083,10 @@ const toolMax = (key) => !UPGRADES[key].costs[tools[key]];
 function refreshBench() {
   for (const [key, sg] of Object.entries(benchSigns)) sg.visible = !toolMax(key);
   // the bench comes back for relic work: assembling a finished set, or this planet's relic upgrade
-  const relicWork = !!relicWaiting() || !!relicUpKey();
+  const relicWork = !!relicUpKey();
   const all = Object.keys(UPGRADES).every(toolMax) && !relicWork;
   bench.visible = !all; benchCollider.r = all ? 0 : 1.2;
-  if (asmDisc) { asmDisc.visible = relicWork; asmDisc.userData.top.material.color.set(relicWaiting() ? '#ffd23f' : '#9fd8ff'); }
+  if (asmDisc) { asmDisc.visible = relicWork; asmDisc.userData.top.material.color.set('#9fd8ff'); }
 }
 // ---- relic work at the workbench
 // one relic upgrade per planet, never on the planet where that relic was assembled; every finished
@@ -1100,12 +1098,11 @@ const RELIC_LEVELS = {
   bag: ['+25 bag space', '+25 more bag space', 'Collects from trays and extractors from farther away'],
 };
 let relicUpPaid = {};
+// a relic upgrade is a mission reward you chose on the galaxy map: the sign appears when the mission is done
 function relicUpKey() {
-  if (game.relicUpOn === game.planet) return null;
-  const c = Object.keys(RELICS).filter((k) => relicOn(k) && game.assembled[k] !== game.planet && (game.relicLv[k] || 0) < 3);
-  if (!c.length) return null;
-  const lo = Math.min(...c.map((k) => game.relicLv[k] || 0));
-  return c.find((k) => (game.relicLv[k] || 0) === lo);
+  if (!MISSION || MISSION.reward !== 'upgrade' || !ms || !ms.done || ms.upgraded) return null;   // (ms isn't set up yet while the signs are first drawn)
+  const k = MISSION.upKey;
+  return k && relicOn(k) && (game.relicLv[k] || 0) < 3 ? k : relicUpNext(game);
 }
 function relicUpCost(k) {
   const [K2, S2, A3] = [0, 1, 2].map((i) => (P.refiners[i] || {}).output);
@@ -1120,22 +1117,15 @@ const asmDisc = new THREE.Group();
   asmDisc.add(base, top); asmDisc.userData = { top }; asmDisc.position.set(ASM.x, 0, ASM.z); asmDisc.visible = false; scene.add(asmDisc);
 }
 addSite({
-  x: ASM.x, z: ASM.z, reach: 0.8,
-  hidden: () => !relicWaiting() || asm.t > 0,
-  title: () => (relicWaiting() ? `Assemble the ${RELICS[relicWaiting()].name}` : ''),
-  cost: () => null, doneText: '',
-  extra: () => (relicWaiting() ? `<span class="lock">${RELICS[relicWaiting()].pieces.length} pieces ready: step on the gold disc</span>` : ''),
-});
-addSite({
   x: ASM.x, z: ASM.z, reach: 0.9,
-  hidden: () => !!relicWaiting() || !relicUpKey(),
+  hidden: () => !relicUpKey(),
   title: () => { const k = relicUpKey(); return k ? `${RELICS[k].name} → level ${(game.relicLv[k] || 0) + 1}` : ''; },
-  extra: () => { const k = relicUpKey(); return k ? `<span class="lock">${RELIC_LEVELS[k][game.relicLv[k] || 0]} · one relic upgrade per planet</span>` : ''; },
+  extra: () => { const k = relicUpKey(); return k ? `<span class="lock">${RELIC_LEVELS[k][game.relicLv[k] || 0]} · your mission reward</span>` : ''; },
   cost: () => { const k = relicUpKey(); if (!k) return null; const left = {}; for (const [m, n] of Object.entries(relicUpCost(k))) left[m] = n - (relicUpPaid[m] || 0); return left; },
   pay: (m) => { relicUpPaid[m] = (relicUpPaid[m] || 0) + 1; },
   complete: () => {
     const k = relicUpKey();
-    game.relicLv[k] = (game.relicLv[k] || 0) + 1; game.relicUpOn = game.planet; relicUpPaid = {};
+    game.relicLv[k] = (game.relicLv[k] || 0) + 1; ms.upgraded = true; relicUpPaid = {};
     saveGame(); save(); sfx.fanfare(); bloomPulse({ x: ASM.x, z: ASM.z });
     toast(`${RELICS[k].name} level ${game.relicLv[k]}: ${RELIC_LEVELS[k][game.relicLv[k] - 1]}!`, true);
     hudDirty = true; refreshBench();
@@ -1143,10 +1133,11 @@ addSite({
 });
 // the assembly: the pieces fly in, spin together, flash, and the finished tool rises
 const asm = { t: 0, k: null, parts: [], tool: null };
+let asmWait = 3;   // a beat after the 'last piece' message (and after loading) before it assembles
 function startAssembly(k) {
   const R = RELICS[k];
   asm.k = k; asm.t = 0.001; sfx.level();
-  const top = new THREE.Vector3(P.workbench.x, 1.3, P.workbench.z - 1.5);
+  const top = new THREE.Vector3(player.x, 1.6, player.z);
   asm.parts = R.pieces.map((_, i) => {
     const o = new THREE.Mesh(new THREE.OctahedronGeometry(0.22, 0), new THREE.MeshBasicMaterial({ color: R.color }));
     const a = (i / R.pieces.length) * Math.PI * 2;
@@ -1161,7 +1152,8 @@ function startAssembly(k) {
 function updateAssembly(dt, t) {
   if (asm.t <= 0) {
     const k = relicWaiting();
-    if (k && playing && Math.hypot(ASM.x - player.x, ASM.z - player.z) < 0.8) startAssembly(k);
+    if (k && playing && asmWait <= 0) startAssembly(k);   // the last piece is in: it assembles itself
+    asmWait = Math.max(0, asmWait - dt);
     return;
   }
   asm.t += dt;
@@ -1175,18 +1167,18 @@ function updateAssembly(dt, t) {
   });
   if (T > 1.4 && asm.parts.length) {
     asm.parts.forEach((o) => scene.remove(o)); asm.parts = [];
-    asm.tool.visible = true; sfx.build(); bloomPulse({ x: P.workbench.x, z: P.workbench.z });
+    asm.tool.visible = true; sfx.build(); bloomPulse({ x: player.x, z: player.z });
   }
   if (asm.tool.visible) {
     const u = Math.min(1, (T - 1.4) / 1.4);
-    asm.tool.position.y = 1.3 + u * 2; asm.tool.rotation.y = T * 4; asm.tool.children[1].rotation.x = T * 3;
+    asm.tool.position.set(player.x, 1.6 + u * 2, player.z); asm.tool.rotation.y = T * 4; asm.tool.children[1].rotation.x = T * 3;
     asm.tool.scale.setScalar(0.6 + u * 0.6);
   }
   if (T > 3.2) {
     const k = asm.k, R = RELICS[k];
     scene.remove(asm.tool); asm.tool = null; asm.t = 0; asm.k = null;
     game.assembled[k] = game.planet; saveGame(); save();
-    sfx.fanfare(); toast(`The ${R.name} is assembled and ready! ${R.effect}.`, true);
+    sfx.fanfare(); toast(`The ${R.name} assembles itself and goes straight into service! ${R.effect}.`, true);
     if (k === 'suit') player.air = maxAir();
     hudDirty = true; refreshBench();
   }
@@ -2168,9 +2160,15 @@ function completeMission() {
   if (ms.done) return;
   ms.done = true; hudDirty = true;
   sfx.fanfare();
-  const k = MISSION.tool && !relicOn(MISSION.tool) ? MISSION.tool : Object.keys(RELICS).find((r) => !relicOn(r));
-  if (k) grantRelic(k);
-  else toast(MISSION.type === 'delivery' ? 'Delivered! The settlers cheer for you.' : 'Mission complete!', true);
+  if (MISSION.reward === 'upgrade' && relicUpKey()) {
+    const k = relicUpKey();
+    toast(`Mission complete! Your reward: the ${RELICS[k].name} level ${(game.relicLv[k] || 0) + 1} upgrade is waiting at the workbench.`, true);
+    refreshBench();
+  } else {
+    const k = MISSION.tool && !relicDone(game, MISSION.tool) ? MISSION.tool : Object.keys(RELICS).find((r) => !relicDone(game, r));
+    if (k) grantRelic(k);
+    else toast(MISSION.type === 'delivery' ? 'Delivered! The settlers cheer for you.' : 'Mission complete!', true);
+  }
   save();
 }
 function grantRelic(k) {
@@ -2179,7 +2177,7 @@ function grantRelic(k) {
   game.relics[k] = Math.min(R.pieces.length, (game.relics[k] || 0) + 1);
   saveGame(); hudDirty = true;
   toast(`Relic piece: ${piece}! ${R.name} ${game.relics[k]}/${R.pieces.length}`, true);
-  if (relicDone(game, k)) setTimeout(() => { sfx.fanfare(); toast(`Every piece of the ${R.name}! Take them to the workbench and step on the gold disc to assemble it.`, true); refreshBench(); hudDirty = true; }, 3800);
+  if (relicDone(game, k)) { asmWait = 3.5; setTimeout(() => { sfx.fanfare(); toast(`Every piece of the ${R.name}!`, true); hudDirty = true; }, 2600); }
 }
 
 // ---- the critters: small round folk who live here (on help and delivery planets)
@@ -2656,7 +2654,7 @@ function launch() {
     const stayNames = stayers.map((a) => a.name).join(' and ');
     document.getElementById('win-text').textContent = (badge
       ? `Every corner of ${P.name} is alive again. You earned the gold planet badge. `
-      : `You can come back and bring the rest of ${P.name} to life for the gold badge. `) +
+      : `Stay and finish ${P.name} for the gold badge, or fly on. `) +
       (stayNames ? `${stayNames} stayed behind to make a home in the hut. ` : '') +
       (crewNames ? `${crewNames} ${aboard.length > 1 ? 'are' : 'is'} flying on with you.` : '');
     if (MISSION) document.getElementById('win-text').textContent += ' ' + missionStatus();
@@ -2670,13 +2668,25 @@ function updateLaunchButton() {
   const near = rocket.done && playing && !rocket.launching && Math.hypot(P.rocket.x - player.x, P.rocket.z - player.z) < 4.2;
   launchEl.classList.toggle('gone', !near);
 }
+let toldLandmarkBadge = false;
 function checkBadge() {
-  if (!badge && restore >= 1) {
-    badge = true; hudDirty = true;
-    sfx.fanfare();
-    toast('The whole planet is alive! Gold planet badge earned ★', true);
-    save();
+  if (badge || restore < 1) return;
+  // a landmark's badge also needs the river dam cleared and the star beacon tower lit
+  const left = [dam && !dam.cleared ? 'clear the river dam' : null, monument && !monument.built ? 'light the star beacon tower' : null].filter(Boolean);
+  if (left.length) {
+    if (!toldLandmarkBadge) { toldLandmarkBadge = true; toast(`The whole planet is alive! For the landmark's gold badge, ${left.join(' and ')}.`, true); }
+    return;
   }
+  badge = true; hudDirty = true;
+  sfx.fanfare();
+  toast('The whole planet is alive! Gold planet badge earned ★', true);
+  game.badges = (game.badges || 0) + 1;
+  const st = stellar(game);
+  if (st.towardPart === 0) setTimeout(() => {
+    sfx.level();
+    toast(st.parts === 0 ? 'Five more gold badges complete the Stellar Award! Open the galaxy map to choose your bonus: a relic piece or an upgrade.' : `Five gold badges! They become part ${st.parts} of 5 of the Stellar Award.`, true);
+  }, 4200);
+  saveGame(); save();
 }
 
 // ------------------------------------------------------------------ screens
@@ -2733,9 +2743,40 @@ function renderGalaxy() {
     const sel = game.course === i;
     const have = o.type === 'delivery' ? `<span class="ohave">${icon(o.mat, 16)} in your rocket hold: ${game.cargo[o.mat] || 0}/${o.amount}</span>` : '';
     const btn = galFly ? `<button class="obtn go" data-fly="${i}">Fly to ${o.name}</button>` : `<button class="obtn${sel ? ' on' : ''}" data-course="${i}">${sel ? '✓ Course set' : 'Set course'}</button>`;
-    return `<div class="offer${sel ? ' on' : ''}"><div class="ohead"><span class="oicon">${offerIcon(o.type)}</span><b>${offerTitle(o)}</b><i>${o.name}</i></div><p>${offerText(o, P, game)}</p>${have}${btn}</div>`;
-  }).join('');
-  document.getElementById('relics').innerHTML = relicsHTML(game);
+    return `<div class="offer${sel ? ' on' : ''}"><div class="ohead"><span class="oicon">${offerIcon(o.type)}</span><b>${offerTitle(o)}</b><i>${o.name}</i></div><p>${offerText(o, P, game)}</p>${rewardChips(o, i)}${have}${btn}</div>`;
+  }).join('') + bonusBox();
+  document.getElementById('relics').innerHTML = relicsHTML(game) + stellarHTML(game);
+}
+// each mission gives one relic reward: you pick a piece or an upgrade (when an assembled relic has a level left)
+function rewardOptions(o) {
+  const opts = [];
+  const k = rewardTool(o, game);
+  if (k) opts.push({ id: 'piece', label: `◆ ${RELICS[k].pieces[game.relics[k] || 0]} <small>${RELICS[k].name} ${(game.relics[k] || 0) + 1}/${RELICS[k].pieces.length}</small>` });
+  const u = relicUpNext(game);
+  if (u) opts.push({ id: 'upgrade', label: `⬆ ${RELICS[u].name} → level ${(game.relicLv[u] || 0) + 1} <small>${RELIC_LEVELS[u][game.relicLv[u] || 0]}</small>` });
+  return opts;
+}
+function rewardOf(o) { const opts = rewardOptions(o); return (opts.find((q) => q.id === o.reward) || opts[0] || {}).id || null; }
+function rewardChips(o, i) {
+  const opts = rewardOptions(o);
+  if (!opts.length) return '';
+  const cur = rewardOf(o);
+  return `<div class="rchips"><span>Reward:</span>${opts.map((q) => `<button class="rchip${q.id === cur ? ' on' : ''}" data-reward="${i}:${q.id}">${q.label}</button>`).join('')}</div>`;
+}
+function bonusBox() {
+  if (stellar(game).bonus <= 0) return '';
+  const opts = Object.keys(RELICS).filter((k) => !relicDone(game, k)).map((k) => `<button class="rchip" data-bonus="piece:${k}">◆ ${RELICS[k].pieces[game.relics[k] || 0]} <small>${RELICS[k].name}</small></button>`);
+  const u = relicUpNext(game);
+  if (u) opts.push(`<button class="rchip" data-bonus="up:${u}">⬆ ${RELICS[u].name} → level ${(game.relicLv[u] || 0) + 1}</button>`);
+  if (!opts.length) return '';
+  return `<div class="offer on"><div class="ohead"><span class="oicon">🏆</span><b>Stellar Award bonus</b></div><p>Twenty-five gold badges! Choose one:</p><div class="rchips">${opts.join('')}</div></div>`;
+}
+function takeBonus(v) {
+  const [kind, k] = v.split(':');
+  game.bonusUsed = (game.bonusUsed || 0) + 1;
+  if (kind === 'up') { game.relicLv[k] = (game.relicLv[k] || 0) + 1; sfx.fanfare(); toast(`Stellar Award: ${RELICS[k].name} level ${game.relicLv[k]}! ${RELIC_LEVELS[k][game.relicLv[k] - 1]}.`, true); }
+  else grantRelic(k);
+  saveGame(); hudDirty = true; renderGalaxy();
 }
 function openGalaxy(fly = false) {
   galFly = fly;
@@ -2748,6 +2789,10 @@ galEl.addEventListener('click', (e) => {
   if (e.target === galEl || e.target.closest('#galclose')) { closeGalaxy(); return; }
   const c = e.target.closest('[data-course]');
   if (c) { const i = +c.dataset.course; game.course = game.course === i ? null : i; saveGame(); sfx.pay(); renderGalaxy(); hudDirty = true; return; }
+  const rw = e.target.closest('[data-reward]');
+  if (rw) { const [i, id] = rw.dataset.reward.split(':'); game.offers[+i].reward = id; saveGame(); sfx.pay(); renderGalaxy(); return; }
+  const bn = e.target.closest('[data-bonus]');
+  if (bn) { takeBonus(bn.dataset.bonus); return; }
   const f = e.target.closest('[data-fly]');
   if (f) flyTo(+f.dataset.fly);
 });
@@ -2771,7 +2816,7 @@ function flyTo(i) {
     ...game, planet: game.planet + 1, seed: o.seed,
     crew: flying.map((a) => ({ name: a.name, color: a.color })), tools: { ...tools }, skills: { ...skills },
     visited: [...(game.visited || []), P.name], log, gen: GEN_VERSION,
-    mission: { ...o, tool: rewardTool(o, game) }, offers: null, offersFor: null, course: null,
+    mission: { ...o, tool: rewardTool(o, game), reward: rewardOf(o), upKey: relicUpNext(game) }, offers: null, offersFor: null, course: null,
   };
   try { localStorage.setItem(GAME_KEY, JSON.stringify(next)); localStorage.removeItem(SAVE_KEY); } catch (e) {}
   try { sessionStorage.setItem('bloom-travel', o.name); } catch (e) {}
@@ -2801,7 +2846,10 @@ muteBtn.addEventListener('click', () => { sfx.init(); sfx.toggle(); muteBtn.clas
 function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize);
 resize();
-if (!load() && game.planet > 0) {
+const hadSave = load();
+// gold badges count toward the Stellar Award: older journeys start from the badges already in the log
+if (game.badges == null) { game.badges = (game.log || []).filter((l) => l.badge).length + (badge ? 1 : 0); saveGame(); }
+if (!hadSave && game.planet > 0) {
   // a new planet: your tools and skills come with you
   if (game.tools) Object.assign(tools, game.tools);
   if (game.skills) Object.assign(skills, game.skills);
