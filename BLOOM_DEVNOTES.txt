@@ -578,3 +578,13 @@ v18 — one relic reward per planet, Stellar Award, landmark badges
 - Fix: a sign drawn before the mission state existed crashed a new planet with
   an upgrade reward (guarded).
 - Test: t24.py.
+
+NOTED FOR NEXT TIME (Todd, Nov 28) — not built
+1. Blueprints are handed out when walking close to the rocket body, not on the
+   white circle where Todd interacts with the rocket. v17 code checks the
+   circle (HOLD_SPOT, < 1.15) — check whether an old build is cached on his
+   device or something else triggers it near the body; make the circle the
+   only place.
+2. A machine running a rocket blueprint shows its tray as 0/12 (the normal tray
+   size) instead of the rocket need (0/4, 0/5). The intake side already counts
+   what's still needed; the output side should show the same target.
